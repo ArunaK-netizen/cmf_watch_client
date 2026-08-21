@@ -1,0 +1,43 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment & IDE
+.env
+.venv
+env/
+venv/
+ENV/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Sensitive Device Credentials & Real Telemetry Data (STRICT PRIVACY)
+cmf_config.json
+health_sync_latest.json
+*.json.bak
+
+# Proprietary Binaries, APKs & Extracted Artifacts
+*.apk
+*.xapk
+apk_extracted/
+reverse-engineering/nothing-x/apk_extracted/
+reverse-engineering/Nothing+X_*.xapk
+*.bin
+
+# Packaging & Build Artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Logs
+*.log

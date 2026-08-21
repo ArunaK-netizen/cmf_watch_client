@@ -10,7 +10,7 @@ readme = "README.md"
 authors = [
     { name = "Open Source Contributors" }
 ]
-license = { text = "MIT" }
+license = "MIT"
 keywords = ["nothing", "cmf", "smartwatch", "ble", "bluetooth", "health", "fitness", "wearable", "reverse-engineering"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",

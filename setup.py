@@ -3,6 +3,9 @@ from setuptools import setup, find_packages
 setup(
     name="cmf-watch-client",
     version="1.0.0",
+    description="Production CMF / Nothing Smartwatch Client & Experiment Subsystem",
+    author="Open Source Contributors",
+    license="MIT",
     packages=find_packages(),
     install_requires=[
         "bleak>=0.20.0",

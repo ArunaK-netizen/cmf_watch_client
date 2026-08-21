@@ -42,6 +42,9 @@ dist/
 # Logs
 *.log
 
-# Scratch scripts and temporary unpacking directories
-scratch/
+# Privacy: Real User Experiment Recordings & Captures
+experiments/
+data/
+captures/
+
 

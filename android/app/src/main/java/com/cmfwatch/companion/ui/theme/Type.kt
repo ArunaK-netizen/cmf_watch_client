@@ -8,10 +8,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.cmfwatch.companion.R
 
-// Nothing NType82 Font Family Definition
-val NType82FontFamily = FontFamily(
-    Font(R.font.ntype82_regular, FontWeight.Normal)
-)
+// Nothing NType82 Font Family Definition (Monospace fallback)
+val NType82FontFamily = FontFamily.Monospace
 
 // Nothing-Style Typography Scale
 val Typography = Typography(

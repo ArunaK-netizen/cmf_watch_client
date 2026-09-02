@@ -7,12 +7,13 @@ from .models import (
     ActivityType,
     DerivedMetrics,
     ExperimentTrial,
-    GroundTruthMethod,
     IntensityLevel,
     RawObservations,
     RawSamplePoint,
+    ReferenceData,
     TrialMetadata,
     TrialStatus,
+    WatchSummaryData,
 )
 from .recorder import ExperimentRecorder
 from .storage import TrialStorageManager
@@ -20,12 +21,13 @@ from .storage import TrialStorageManager
 __all__ = [
     "ExperimentTrial",
     "TrialMetadata",
+    "WatchSummaryData",
+    "ReferenceData",
     "RawObservations",
     "RawSamplePoint",
     "DerivedMetrics",
     "ActivityType",
     "IntensityLevel",
-    "GroundTruthMethod",
     "TrialStatus",
     "ExperimentRecorder",
     "TrialStorageManager",

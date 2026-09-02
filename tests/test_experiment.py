@@ -1,5 +1,5 @@
 """
-Automated unit tests for Experiment 01 data collection subsystem.
+Automated unit tests for Experiment 01 data collection subsystem and redesigned trial models.
 Uses synthetic test vectors ONLY; contains zero real user location or personal health data.
 """
 
@@ -11,13 +11,14 @@ from cmf_watch_client.experiment import (
     DerivedMetrics,
     ExperimentRecorder,
     ExperimentTrial,
-    GroundTruthMethod,
     IntensityLevel,
     RawObservations,
     RawSamplePoint,
+    ReferenceData,
     TrialMetadata,
     TrialStatus,
     TrialStorageManager,
+    WatchSummaryData,
     calculate_gps_track_distance,
     haversine_distance,
 )
@@ -49,10 +50,27 @@ def test_experiment_models_serialization(tmp_path):
         date_time=now,
         activity=ActivityType.WALK,
         intensity=IntensityLevel.NORMAL,
-        ground_truth_method=GroundTruthMethod.TRACK,
-        target_distance_m=400.0,
+        planned_distance_m=400.0,
         user_height_cm=175.0,
         status=TrialStatus.COMPLETED,
+    )
+
+    watch_data = WatchSummaryData(
+        watch_final_steps=500,
+        watch_final_distance_m=363.0,
+        watch_total_duration_seconds=300.0,
+        watch_calories_kcal=24.5,
+        watch_average_hr=82.0,
+        watch_average_cadence_spm=100.0,
+        watch_calculated_mean_stride_m=0.726,
+    )
+
+    reference_data = ReferenceData(
+        reference_method="track",
+        reference_distance_m=400.0,
+        reference_duration_seconds=300.0,
+        reference_source="400m Athletics Track",
+        notes="Synthetic test trial",
     )
 
     sample = RawSamplePoint(
@@ -67,26 +85,22 @@ def test_experiment_models_serialization(tmp_path):
         start_time=now,
         end_time=now,
         total_duration_seconds=300.0,
-        watch_final_steps=500,
-        watch_final_distance_m=363.0,
         samples=[sample],
     )
 
     derived = DerivedMetrics(
-        ground_truth_distance_m=400.0,
-        watch_reported_distance_m=363.0,
-        gps_calculated_distance_m=0.0,
-        average_cadence_spm=100.0,
-        calculated_mean_stride_m=0.726,
-        baseline_error_m=-37.0,
-        baseline_error_percentage=-9.25,
+        distance_error_m=-37.0,
+        distance_error_percentage=-9.25,
+        duration_difference_seconds=0.0,
     )
 
     trial = ExperimentTrial(
         schema_version="1.0",
         metadata=metadata,
-        raw_observations=raw_obs,
+        watch_data=watch_data,
+        reference_data=reference_data,
         derived_metrics=derived,
+        raw_observations=raw_obs,
     )
 
     # Test serialization / deserialization
@@ -96,7 +110,8 @@ def test_experiment_models_serialization(tmp_path):
 
     assert deserialized.schema_version == "1.0"
     assert deserialized.metadata.trial_id == "trial_001"
-    assert deserialized.derived_metrics.average_cadence_spm == 100.0
+    assert deserialized.watch_data.watch_average_cadence_spm == 100.0
+    assert deserialized.reference_data.reference_distance_m == 400.0
 
 
 def test_trial_storage_manager(tmp_path):
@@ -108,10 +123,15 @@ def test_trial_storage_manager(tmp_path):
     trial = ExperimentTrial(
         schema_version="1.0",
         metadata=TrialMetadata(trial_id=trial_id, date_time=now),
-        raw_observations=RawObservations(
-            start_time=now, total_duration_seconds=10.0, watch_final_steps=10, watch_final_distance_m=7.0
+        watch_data=WatchSummaryData(
+            watch_final_steps=10,
+            watch_final_distance_m=7.0,
+            watch_total_duration_seconds=10.0,
+            watch_average_cadence_spm=60.0,
+            watch_calculated_mean_stride_m=0.7,
         ),
-        derived_metrics=DerivedMetrics(watch_reported_distance_m=7.0, average_cadence_spm=60.0, calculated_mean_stride_m=0.7),
+        derived_metrics=DerivedMetrics(),
+        raw_observations=RawObservations(start_time=now, total_duration_seconds=10.0),
     )
 
     saved_path = storage.save_trial(trial)
@@ -129,12 +149,17 @@ def test_interrupted_trial_handling():
         trial_id="trial_999",
         date_time=now,
         status=TrialStatus.INTERRUPTED,
-        notes="Connection dropped during recording",
     )
-    raw_obs = RawObservations(
-        start_time=now, total_duration_seconds=15.0, watch_final_steps=20, watch_final_distance_m=14.0
+    watch_data = WatchSummaryData(
+        watch_final_steps=20,
+        watch_final_distance_m=14.0,
+        watch_total_duration_seconds=15.0,
+        watch_average_cadence_spm=80.0,
+        watch_calculated_mean_stride_m=0.7,
     )
-    derived = DerivedMetrics(watch_reported_distance_m=14.0, average_cadence_spm=80.0, calculated_mean_stride_m=0.7)
+    raw_obs = RawObservations(start_time=now, total_duration_seconds=15.0)
 
-    interrupted_trial = ExperimentTrial(metadata=metadata, raw_observations=raw_obs, derived_metrics=derived)
+    interrupted_trial = ExperimentTrial(
+        metadata=metadata, watch_data=watch_data, derived_metrics=DerivedMetrics(), raw_observations=raw_obs
+    )
     assert interrupted_trial.metadata.status == TrialStatus.INTERRUPTED

@@ -20,7 +20,7 @@ import com.cmfwatch.companion.ui.theme.*
 @Composable
 fun DeviceScreen(
     connectionState: DeviceConnectionState,
-    batteryLevel: Int,
+    batteryLevel: Int?,
     deviceName: String = "CMF Watch Pro 2",
     macAddress: String = "3C:B0:ED:3F:BA:70",
     onSyncNow: () -> Unit = {},
@@ -104,11 +104,14 @@ fun DeviceScreen(
         }
 
         item {
+            val batteryText = batteryLevel?.let { "$it%" } ?: "--"
+            val batterySubtitle = if (batteryLevel != null) "Hardware AFE & BLE Radio Active" else "Battery telemetry unavailable"
+
             MetricCard(
                 title = "Battery Telemetry",
-                value = "$batteryLevel%",
+                value = batteryText,
                 unit = "State",
-                subtitle = "Hardware AFE & BLE Radio Active",
+                subtitle = batterySubtitle,
                 accentColor = AccentActivity
             )
         }

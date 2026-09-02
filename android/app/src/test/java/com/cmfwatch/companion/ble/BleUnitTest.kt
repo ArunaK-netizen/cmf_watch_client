@@ -2,61 +2,51 @@ package com.cmfwatch.companion.ble
 
 import org.junit.Assert.*
 import org.junit.Test
-import java.time.Instant
 
 class BleUnitTest {
 
     @Test
-    fun testCrc16Calculation() {
+    fun testCrc32Calculation() {
         val testData = "123456789".toByteArray(Charsets.UTF_8)
-        val crc = CryptoEngine.calculateCrc16(testData)
-        // CRC16-CCITT check for "123456789" is 0x29B1 (10673)
-        assertEquals(0x29B1, crc)
+        val crcBytes = CryptoEngine.calculateCrc32Bytes(testData)
+        // CRC32 for "123456789" is 0xcbf43926 in Little-Endian: [0x26, 0x39, 0xf4, 0xcb]
+        assertEquals(4, crcBytes.size)
+        val expected = byteArrayOf(0x26.toByte(), 0x39.toByte(), 0xF4.toByte(), 0xCB.toByte())
+        assertArrayEquals(expected, crcBytes)
     }
 
     @Test
-    fun testAuthKeyDerivation() {
-        val rnd1 = ByteArray(16) { 0x01 }
-        val rnd2 = ByteArray(16) { 0x02 }
-        val secret = ByteArray(16) { 0x03 }
-        val authKey = CryptoEngine.deriveAuthKey(rnd1, rnd2, secret)
-        assertEquals(16, authKey.size)
+    fun testSessionKeyDerivation() {
+        val watchNonce = ByteArray(16) { 0x0A }
+        val authKey = ByteArray(16) { 0x0B }
+        val sessionKey = CryptoEngine.deriveSessionKey(watchNonce, authKey)
+        assertEquals(16, sessionKey.size)
     }
 
     @Test
     fun testProtocolFramerBuildAndParsePlaintext() {
         val payload = "Hello CMF".toByteArray(Charsets.UTF_8)
-        val frameBytes = ProtocolFramer.buildFrame(
-            seq = 1,
+        val frames = ProtocolFramer.buildFrames(
             cmd1 = 0xFFFF,
-            cmd2 = 0x804B,
-            payload = payload
+            cmd2 = 0x8049,
+            payload = payload,
+            sessionKey = null
         )
 
-        assertNotNull(frameBytes)
-        assertTrue(frameBytes.size >= 10)
+        assertNotNull(frames)
+        assertEquals(1, frames.size)
+        val frameBytes = frames[0]
+        assertTrue(frameBytes.size >= 11)
         assertEquals(0xF5.toByte(), frameBytes[0])
 
-        val parsed = ProtocolFramer.parseFrame(frameBytes)
-        assertNotNull(parsed)
-        assertEquals(1, parsed!!.seq)
-        assertEquals(0xFFFF, parsed.cmd1)
-        assertEquals(0x804B, parsed.cmd2)
-        assertFalse(parsed.isEncrypted)
-        assertArrayEquals(payload, parsed.payload)
-    }
-
-    @Test
-    fun testHeartRateDecoder() {
-        // Payload: 8 bytes LE (epoch_sec: 1787333684, bpm: 72)
-        val payload = byteArrayOf(
-            0x34.toByte(), 0xA1.toByte(), 0x86.toByte(), 0x6A.toByte(), // 1787333684
-            0x48.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte()  // 72 BPM
-        )
-        val hr = TelemetryDecoders.decodeHeartRate(payload, "0x0053")
-        assertNotNull(hr)
-        assertEquals(72, hr!!.bpm)
-        assertEquals(1787333684L, hr.timestamp.epochSecond)
+        val assembler = FrameAssembler()
+        val result = assembler.processRawNotification(frameBytes, sessionKey = null)
+        assertNotNull(result)
+        assertEquals(Pair(0xFFFF, 0x8049), result!!.first)
+        val body = result.second
+        // Body contains payload + 4B CRC32
+        val payloadExtracted = body.copyOfRange(0, body.size - 4)
+        assertArrayEquals(payload, payloadExtracted)
     }
 
     @Test

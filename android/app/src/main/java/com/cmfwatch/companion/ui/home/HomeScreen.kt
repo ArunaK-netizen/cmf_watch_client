@@ -68,16 +68,19 @@ fun HomeScreen(
                     title = "Heart Rate",
                     value = summary.latestHeartRate?.toString() ?: "--",
                     unit = "BPM",
-                    subtitle = summary.restingHeartRate?.let { "Resting: $it BPM" } ?: "No reading",
+                    subtitle = summary.restingHeartRate?.let { "Resting: $it BPM" } ?: "No telemetry",
                     accentColor = AccentHeartRate,
                     modifier = Modifier.weight(1f)
                 )
 
+                val stepsText = summary.todaySteps?.let { String.format("%,d", it) } ?: "--"
+                val distText = summary.todayDistanceKm?.let { String.format("%.2f km", it) } ?: "No telemetry"
+
                 MetricCard(
                     title = "Steps",
-                    value = String.format("%,d", summary.todaySteps),
+                    value = stepsText,
                     unit = "steps",
-                    subtitle = String.format("%.1f km", summary.todayDistanceKm),
+                    subtitle = distText,
                     accentColor = AccentActivity,
                     modifier = Modifier.weight(1f)
                 )
@@ -94,7 +97,7 @@ fun HomeScreen(
             ) {
                 MetricCard(
                     title = "Active Energy",
-                    value = summary.todayCaloriesKcal.toString(),
+                    value = summary.todayCaloriesKcal?.toString() ?: "--",
                     unit = "kcal",
                     subtitle = "Daily expenditure",
                     accentColor = AccentSleepAwake,
@@ -130,7 +133,7 @@ fun HomeScreen(
                     in 1..29 -> "State: Rested / Low Stress"
                     in 30..59 -> "State: Moderate Stress"
                     in 60..100 -> "State: High Stress"
-                    else -> "No data synced"
+                    else -> "No telemetry synced"
                 },
                 accentColor = AccentStressLow
             )

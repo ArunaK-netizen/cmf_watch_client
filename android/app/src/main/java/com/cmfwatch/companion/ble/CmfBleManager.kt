@@ -6,9 +6,7 @@ import android.content.Context
 import android.util.Log
 import com.cmfwatch.companion.domain.models.DeviceConnectionState
 import com.cmfwatch.companion.domain.models.HeartRateSample
-import com.cmfwatch.companion.domain.models.SpO2Sample
 import com.cmfwatch.companion.domain.models.StepInterval
-import com.cmfwatch.companion.domain.models.StressSample
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +16,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.security.SecureRandom
+import java.time.Instant
+import java.time.ZoneId
 import java.util.UUID
 
 @SuppressLint("MissingPermission")
@@ -32,8 +31,6 @@ class CmfBleManager(
         val CMF_SERVICE_UUID: UUID = UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb")
         val CMF_CMD_CHAR_UUID: UUID = UUID.fromString("0000fff1-0000-1000-8000-00805f9b34fb")
         val CCCD_DESCRIPTOR_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
-
-        private const val TARGET_DEVICE_NAME_PREFIX = "CMF Watch"
     }
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
@@ -56,11 +53,9 @@ class CmfBleManager(
     private val _stepFlow = MutableSharedFlow<StepInterval>(extraBufferCapacity = 64)
     val stepFlow: SharedFlow<StepInterval> = _stepFlow.asSharedFlow()
 
-    private var sequenceNumber = 0
+    private val frameAssembler = FrameAssembler()
     private var authKey: ByteArray? = authKeyHex?.let { parseHexKey(it) }
-    private var sessionKey: ByteArray? = null
-    private var clientNonce: ByteArray = ByteArray(16)
-    private var watchNonce: ByteArray? = null
+    private var sessionKey: ByteArray? = authKey
 
     private val managerScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -94,6 +89,7 @@ class CmfBleManager(
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 Log.i(TAG, "GATT connected. Requesting MTU 512...")
+                _connectionState.value = DeviceConnectionState.CONNECTED
                 gatt.requestMtu(512)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.w(TAG, "GATT disconnected. Status: $status")
@@ -150,14 +146,14 @@ class CmfBleManager(
     private fun startSessionHandshake() {
         managerScope.launch {
             try {
-                // Step 1: AUTH_PHONE_NAME (0xFFFF 804B)
-                val phoneNameBytes = "CMF Companion".toByteArray(Charsets.UTF_8)
-                sendFrame(0xFFFF, 0x804B, phoneNameBytes, useEncryption = false)
+                _connectionState.value = DeviceConnectionState.AUTHENTICATING
+                // Step 1: AUTH_PHONE_NAME (cmd1=0xFFFF, cmd2=0x8049)
+                val phoneNameBytes = byteArrayOf(0xA5.toByte()) + "CMF Companion".toByteArray(Charsets.UTF_8)
+                sendFrame(0xFFFF, 0x8049, phoneNameBytes, useEncryption = false)
                 delay(200)
 
-                // Step 2: AUTH_NONCE_REQUEST (0xFFFF 804C)
-                SecureRandom().nextBytes(clientNonce)
-                sendFrame(0xFFFF, 0x804C, clientNonce, useEncryption = false)
+                // Step 2: AUTH_NONCE_REQUEST (cmd1=0xFFFF, cmd2=0x804B)
+                sendFrame(0xFFFF, 0x804B, byteArrayOf(0xA5.toByte()), useEncryption = false)
             } catch (e: Exception) {
                 Log.e(TAG, "Error in session handshake: ${e.message}")
             }
@@ -165,31 +161,34 @@ class CmfBleManager(
     }
 
     private fun handleNotificationBytes(data: ByteArray) {
-        val frame = ProtocolFramer.parseFrame(data, sessionKey, clientNonce) ?: return
+        val result = frameAssembler.processRawNotification(data, sessionKey) ?: return
+        val (opcode, payload) = result
+        val (cmd1, cmd2) = opcode
 
         when {
-            // AUTH_NONCE_REPLY (0xFFFF 0003)
-            frame.cmd1 == 0xFFFF && frame.cmd2 == 0x0003 -> {
-                if (frame.payload.size >= 16 && authKey != null) {
-                    watchNonce = ByteArray(16)
-                    System.arraycopy(frame.payload, 0, watchNonce!!, 0, 16)
-                    sessionKey = CryptoEngine.deriveSessionKey(clientNonce, watchNonce!!, authKey!!)
+            // AUTH_NONCE_REPLY (0xFFFF 004C)
+            cmd1 == 0xFFFF && cmd2 == 0x004C -> {
+                if (payload.size >= 16 && authKey != null) {
+                    val watchNonce = payload.copyOfRange(0, 16)
+                    sessionKey = CryptoEngine.deriveSessionKey(watchNonce, authKey!!)
                     // REDACT SENSITIVE LOGS
                     Log.i(TAG, "Session key established: [REDACTED]")
 
-                    // Confirm authentication (0xFFFF 804D)
-                    val confirmBytes = ByteArray(16)
-                    sendFrame(0xFFFF, 0x804D, confirmBytes, useEncryption = true)
+                    // Step 4: AUTHENTICATED_CONFIRM_REQUEST (0xFFFF 804D)
+                    sendFrame(0xFFFF, 0x804D, byteArrayOf(0xA5.toByte()), useEncryption = true)
                     _connectionState.value = DeviceConnectionState.CONNECTED_PAIRED
 
-                    // Immediately fetch battery & battery state
+                    // Post-Auth Mandatory Command: Set Time (0xFFFF 8004)
+                    setDeviceTime()
+
+                    // Immediately query Battery
                     fetchBattery()
                 }
             }
 
             // BATTERY_REPLY (0x005C 0x0001)
-            frame.cmd1 == 0x005C && frame.cmd2 == 0x0001 -> {
-                val battery = TelemetryDecoders.decodeBattery(frame.payload)
+            cmd1 == 0x005C && cmd2 == 0x0001 -> {
+                val battery = TelemetryDecoders.decodeBattery(payload)
                 if (battery != null) {
                     _batteryState.value = battery
                     Log.i(TAG, "Decoded Watch Battery: ${battery.level}% (Charging: ${battery.isCharging})")
@@ -197,8 +196,8 @@ class CmfBleManager(
             }
 
             // HEART_RATE (0x0053, 0x00DA, 0x00E0)
-            frame.cmd1 == 0x0053 || frame.cmd1 == 0x00DA || frame.cmd1 == 0x00E0 -> {
-                val hr = TelemetryDecoders.decodeHeartRate(frame.payload, "0x%04X".format(frame.cmd1))
+            cmd1 == 0x0053 || cmd1 == 0x00DA || cmd1 == 0x00E0 -> {
+                val hr = TelemetryDecoders.decodeHeartRate(payload, "0x%04X".format(cmd1))
                 if (hr != null) {
                     managerScope.launch { _heartRateFlow.emit(hr) }
                     Log.i(TAG, "Decoded Heart Rate sample: ${hr.bpm} BPM at ${hr.timestamp}")
@@ -206,8 +205,8 @@ class CmfBleManager(
             }
 
             // ACTIVITY_DATA (0x0056)
-            frame.cmd1 == 0x0056 -> {
-                val interval = TelemetryDecoders.decodeStepInterval(frame.payload)
+            cmd1 == 0x0056 -> {
+                val interval = TelemetryDecoders.decodeStepInterval(payload)
                 if (interval != null) {
                     managerScope.launch { _stepFlow.emit(interval) }
                 }
@@ -215,16 +214,32 @@ class CmfBleManager(
         }
     }
 
+    private fun setDeviceTime() {
+        managerScope.launch {
+            val now = Instant.now()
+            val epochSec = now.epochSecond
+            val zone = ZoneId.systemDefault()
+            val offsetMs = zone.rules.getOffset(now).totalSeconds * 1000
+
+            val timePayload = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN)
+            timePayload.putInt(epochSec.toInt())
+            timePayload.putInt(offsetMs)
+
+            Log.i(TAG, "Setting watch time (epochSec=$epochSec, offsetMs=$offsetMs)...")
+            sendFrame(0xFFFF, 0x8004, timePayload.array(), useEncryption = true)
+        }
+    }
+
     fun fetchBattery() {
-        sendFrame(0x005C, 0x0002, ByteArray(0), useEncryption = true)
+        sendFrame(0x005C, 0x0002, byteArrayOf(0xA5.toByte()), useEncryption = true)
     }
 
     fun triggerSync() {
         managerScope.launch {
             _connectionState.value = DeviceConnectionState.SYNCING
-            sendFrame(0xFFFF, 0x8005, ByteArray(0), useEncryption = true) // ACTIVITY_FETCH_1
+            sendFrame(0xFFFF, 0x8005, byteArrayOf(0xA5.toByte()), useEncryption = true) // ACTIVITY_FETCH_1
             delay(100)
-            sendFrame(0xFFFF, 0x9057, ByteArray(0), useEncryption = true) // ACTIVITY_FETCH_2
+            sendFrame(0xFFFF, 0x9057, byteArrayOf(0xA5.toByte()), useEncryption = true) // ACTIVITY_FETCH_2
             delay(3000)
             _connectionState.value = DeviceConnectionState.CONNECTED_PAIRED
         }
@@ -235,18 +250,17 @@ class CmfBleManager(
         val char = cmdCharacteristic ?: return
 
         val key = if (useEncryption) sessionKey else null
-        val iv = if (useEncryption) clientNonce else null
 
-        val frameBytes = ProtocolFramer.buildFrame(
-            seq = sequenceNumber++,
+        val frames = ProtocolFramer.buildFrames(
             cmd1 = cmd1,
             cmd2 = cmd2,
             payload = payload,
-            sessionKey = key,
-            iv = iv
+            sessionKey = key
         )
 
-        char.value = frameBytes
-        gatt.writeCharacteristic(char)
+        for (frameBytes in frames) {
+            char.value = frameBytes
+            gatt.writeCharacteristic(char)
+        }
     }
 }

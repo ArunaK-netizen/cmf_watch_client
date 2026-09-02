@@ -9,11 +9,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cmfwatch.companion.domain.models.DashboardSummary
-import com.cmfwatch.companion.domain.models.DeviceConnectionState
 import com.cmfwatch.companion.ui.activity.ActivityScreen
 import com.cmfwatch.companion.ui.device.DeviceScreen
 import com.cmfwatch.companion.ui.health.HealthScreen
@@ -33,6 +31,7 @@ enum class NavDestination(val label: String) {
 @Composable
 fun AppNavigationShell(
     summary: DashboardSummary,
+    onSyncNow: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var currentDestination by remember { mutableStateOf(NavDestination.HOME) }
@@ -45,7 +44,7 @@ fun AppNavigationShell(
                 latestBpm = summary.latestHeartRate,
                 restingBpm = summary.restingHeartRate,
                 latestStress = summary.latestStressScore,
-                latestSpO2 = 98
+                latestSpO2 = null
             )
             NavDestination.ACTIVITY -> ActivityScreen(
                 steps = summary.todaySteps,
@@ -55,7 +54,8 @@ fun AppNavigationShell(
             NavDestination.SLEEP -> SleepScreen(session = null)
             NavDestination.DEVICE -> DeviceScreen(
                 connectionState = summary.connectionState,
-                batteryLevel = summary.deviceBatteryLevel
+                batteryLevel = summary.deviceBatteryLevel,
+                onSyncNow = onSyncNow
             )
         }
 

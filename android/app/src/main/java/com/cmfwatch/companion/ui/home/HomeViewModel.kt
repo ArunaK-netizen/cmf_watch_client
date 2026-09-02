@@ -20,12 +20,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         DashboardSummary(
             latestHeartRate = null,
             restingHeartRate = null,
-            todaySteps = 0,
-            todayDistanceKm = 0.0f,
-            todayCaloriesKcal = 0,
+            todaySteps = null,
+            todayDistanceKm = null,
+            todayCaloriesKcal = null,
             lastSleepMinutes = null,
             latestStressScore = null,
-            deviceBatteryLevel = 0,
+            deviceBatteryLevel = null,
             connectionState = DeviceConnectionState.DISCONNECTED,
             lastSyncedAt = null
         )
@@ -62,9 +62,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         // Observe Step Intervals
         viewModelScope.launch {
             bleManager.stepFlow.collect { step ->
-                val newSteps = _uiState.value.todaySteps + step.steps
-                val newDist = _uiState.value.todayDistanceKm + (step.distanceMeters / 1000.0f)
-                val newKcal = _uiState.value.todayCaloriesKcal + step.caloriesKcal.toInt()
+                val newSteps = (_uiState.value.todaySteps ?: 0) + step.steps
+                val newDist = (_uiState.value.todayDistanceKm ?: 0.0f) + (step.distanceMeters / 1000.0f)
+                val newKcal = (_uiState.value.todayCaloriesKcal ?: 0) + step.caloriesKcal.toInt()
 
                 _uiState.value = _uiState.value.copy(
                     todaySteps = newSteps,

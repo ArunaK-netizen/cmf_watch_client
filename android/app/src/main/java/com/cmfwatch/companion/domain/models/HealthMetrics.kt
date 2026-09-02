@@ -4,8 +4,11 @@ import java.time.Instant
 
 enum class DeviceConnectionState {
     DISCONNECTED,
+    SCANNING,
     CONNECTING,
-    CONNECTED_PAIRED,
+    CONNECTED,
+    AUTHENTICATING,
+    CONNECTED_PAIRED, // READY
     SYNCING,
     ERROR
 }
@@ -56,12 +59,12 @@ data class SpO2Sample(
 data class DashboardSummary(
     val latestHeartRate: Int?,
     val restingHeartRate: Int?,
-    val todaySteps: Int,
-    val todayDistanceKm: Float,
-    val todayCaloriesKcal: Int,
+    val todaySteps: Int?,
+    val todayDistanceKm: Float?,
+    val todayCaloriesKcal: Int?,
     val lastSleepMinutes: Int?,
     val latestStressScore: Int?,
-    val deviceBatteryLevel: Int,
+    val deviceBatteryLevel: Int?,
     val connectionState: DeviceConnectionState,
     val lastSyncedAt: Instant?
 )

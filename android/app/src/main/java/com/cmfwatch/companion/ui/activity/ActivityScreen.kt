@@ -13,9 +13,9 @@ import com.cmfwatch.companion.ui.theme.*
 
 @Composable
 fun ActivityScreen(
-    steps: Int,
-    distanceKm: Float,
-    caloriesKcal: Int,
+    steps: Int?,
+    distanceKm: Float?,
+    caloriesKcal: Int?,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -43,9 +43,10 @@ fun ActivityScreen(
         }
 
         item {
+            val stepsText = steps?.let { String.format("%,d", it) } ?: "--"
             MetricCard(
                 title = "Total Steps",
-                value = String.format("%,d", steps),
+                value = stepsText,
                 unit = "steps",
                 subtitle = "Goal: 10,000 steps",
                 accentColor = AccentActivity
@@ -54,9 +55,10 @@ fun ActivityScreen(
         }
 
         item {
+            val distText = distanceKm?.let { String.format("%.2f", it) } ?: "--"
             MetricCard(
                 title = "Distance",
-                value = String.format("%.2f", distanceKm),
+                value = distText,
                 unit = "km",
                 subtitle = "Calculated walking/running distance",
                 accentColor = AccentSpO2
@@ -65,9 +67,10 @@ fun ActivityScreen(
         }
 
         item {
+            val caloriesText = caloriesKcal?.toString() ?: "--"
             MetricCard(
                 title = "Active Energy",
-                value = caloriesKcal.toString(),
+                value = caloriesText,
                 unit = "kcal",
                 subtitle = "Movement expenditure",
                 accentColor = AccentSleepAwake

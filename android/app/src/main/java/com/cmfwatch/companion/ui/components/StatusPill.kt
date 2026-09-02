@@ -8,7 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cmfwatch.companion.domain.models.DeviceConnectionState
@@ -17,13 +16,17 @@ import com.cmfwatch.companion.ui.theme.*
 @Composable
 fun StatusPill(
     state: DeviceConnectionState,
-    batteryLevel: Int,
+    batteryLevel: Int?,
     modifier: Modifier = Modifier
 ) {
+    val batteryText = batteryLevel?.let { " • $it%" } ?: ""
     val (statusText, statusColor) = when (state) {
-        DeviceConnectionState.CONNECTED_PAIRED -> "CONNECTED • $batteryLevel%" to AccentActivity
+        DeviceConnectionState.CONNECTED_PAIRED -> "CONNECTED$batteryText" to AccentActivity
+        DeviceConnectionState.CONNECTED -> "CONNECTED$batteryText" to AccentActivity
         DeviceConnectionState.SYNCING -> "SYNCING..." to AccentSpO2
+        DeviceConnectionState.AUTHENTICATING -> "AUTHENTICATING..." to AccentSleepAwake
         DeviceConnectionState.CONNECTING -> "CONNECTING..." to AccentSleepAwake
+        DeviceConnectionState.SCANNING -> "SCANNING..." to AccentSleepAwake
         DeviceConnectionState.DISCONNECTED -> "DISCONNECTED" to TextSecondary
         DeviceConnectionState.ERROR -> "CONNECTION ERROR" to AccentRed
     }

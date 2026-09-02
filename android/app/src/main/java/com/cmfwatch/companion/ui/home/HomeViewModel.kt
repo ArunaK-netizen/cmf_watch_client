@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.cmfwatch.companion.ble.CmfBleManager
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.domain.models.DeviceConnectionState
+import com.cmfwatch.companion.domain.models.DiscoveredDevice
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,8 +27,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             lastSleepMinutes = null,
             latestStressScore = null,
             deviceBatteryLevel = null,
-            connectionState = DeviceConnectionState.DISCONNECTED,
-            lastSyncedAt = null
+            connectionState = DeviceConnectionState.IDLE,
+            lastSyncedAt = null,
+            discoveredDevices = emptyList()
         )
     )
     val uiState: StateFlow<DashboardSummary> = _uiState.asStateFlow()
@@ -37,6 +39,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             bleManager.connectionState.collect { state ->
                 _uiState.value = _uiState.value.copy(connectionState = state)
+            }
+        }
+
+        // Observe Discovered Peripherals
+        viewModelScope.launch {
+            bleManager.discoveredDevices.collect { devices ->
+                _uiState.value = _uiState.value.copy(discoveredDevices = devices)
             }
         }
 
@@ -75,8 +84,20 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun startScan() {
+        bleManager.startScan()
+    }
+
+    fun stopScan() {
+        bleManager.stopScan()
+    }
+
     fun connectToWatch(macAddress: String) {
         bleManager.connect(macAddress)
+    }
+
+    fun disconnect() {
+        bleManager.disconnect()
     }
 
     fun triggerSync() {

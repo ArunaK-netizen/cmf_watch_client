@@ -30,6 +30,9 @@ class MainActivity : ComponentActivity() {
 
                     AppNavigationShell(
                         summary = summaryState,
+                        onStartScan = { homeViewModel.startScan() },
+                        onConnectDevice = { macAddress -> homeViewModel.connectToWatch(macAddress) },
+                        onDisconnectDevice = { homeViewModel.disconnect() },
                         onSyncNow = { homeViewModel.triggerSync() }
                     )
                 }

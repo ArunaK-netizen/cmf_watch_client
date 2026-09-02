@@ -31,6 +31,9 @@ enum class NavDestination(val label: String) {
 @Composable
 fun AppNavigationShell(
     summary: DashboardSummary,
+    onStartScan: () -> Unit = {},
+    onConnectDevice: (String) -> Unit = {},
+    onDisconnectDevice: () -> Unit = {},
     onSyncNow: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -53,8 +56,10 @@ fun AppNavigationShell(
             )
             NavDestination.SLEEP -> SleepScreen(session = null)
             NavDestination.DEVICE -> DeviceScreen(
-                connectionState = summary.connectionState,
-                batteryLevel = summary.deviceBatteryLevel,
+                summary = summary,
+                onStartScan = onStartScan,
+                onConnectDevice = onConnectDevice,
+                onDisconnectDevice = onDisconnectDevice,
                 onSyncNow = onSyncNow
             )
         }

@@ -21,12 +21,17 @@ fun StatusPill(
 ) {
     val batteryText = batteryLevel?.let { " • $it%" } ?: ""
     val (statusText, statusColor) = when (state) {
-        DeviceConnectionState.CONNECTED_PAIRED -> "CONNECTED$batteryText" to AccentActivity
+        DeviceConnectionState.CONNECTED_PAIRED -> "READY$batteryText" to AccentActivity
         DeviceConnectionState.CONNECTED -> "CONNECTED$batteryText" to AccentActivity
         DeviceConnectionState.SYNCING -> "SYNCING..." to AccentSpO2
         DeviceConnectionState.AUTHENTICATING -> "AUTHENTICATING..." to AccentSleepAwake
+        DeviceConnectionState.SUBSCRIBING -> "SUBSCRIBING..." to AccentSleepAwake
+        DeviceConnectionState.DISCOVERING_SERVICES -> "DISCOVERING SERVICES..." to AccentSleepAwake
         DeviceConnectionState.CONNECTING -> "CONNECTING..." to AccentSleepAwake
+        DeviceConnectionState.DEVICES_FOUND -> "DEVICES FOUND" to AccentSleepAwake
         DeviceConnectionState.SCANNING -> "SCANNING..." to AccentSleepAwake
+        DeviceConnectionState.IDLE -> "IDLE" to TextSecondary
+        DeviceConnectionState.DISCONNECTING -> "DISCONNECTING..." to TextSecondary
         DeviceConnectionState.DISCONNECTED -> "DISCONNECTED" to TextSecondary
         DeviceConnectionState.ERROR -> "CONNECTION ERROR" to AccentRed
     }

@@ -2,9 +2,12 @@ package com.cmfwatch.companion.ble
 
 import android.annotation.SuppressLint
 import android.bluetooth.*
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
 import android.content.Context
 import android.util.Log
 import com.cmfwatch.companion.domain.models.DeviceConnectionState
+import com.cmfwatch.companion.domain.models.DiscoveredDevice
 import com.cmfwatch.companion.domain.models.HeartRateSample
 import com.cmfwatch.companion.domain.models.StepInterval
 import kotlinx.coroutines.*
@@ -41,8 +44,11 @@ class CmfBleManager(
     private var bluetoothGatt: BluetoothGatt? = null
     private var cmdCharacteristic: BluetoothGattCharacteristic? = null
 
-    private val _connectionState = MutableStateFlow(DeviceConnectionState.DISCONNECTED)
+    private val _connectionState = MutableStateFlow(DeviceConnectionState.IDLE)
     val connectionState: StateFlow<DeviceConnectionState> = _connectionState.asStateFlow()
+
+    private val _discoveredDevices = MutableStateFlow<List<DiscoveredDevice>>(emptyList())
+    val discoveredDevices: StateFlow<List<DiscoveredDevice>> = _discoveredDevices.asStateFlow()
 
     private val _batteryState = MutableStateFlow<BatteryState?>(null)
     val batteryState: StateFlow<BatteryState?> = _batteryState.asStateFlow()
@@ -58,12 +64,90 @@ class CmfBleManager(
     private var sessionKey: ByteArray? = authKey
 
     private val managerScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var isScanning = false
 
     private fun parseHexKey(hex: String): ByteArray {
         return hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
     }
 
+    /**
+     * Perform dynamic BLE scan for nearby CMF/Nothing watch peripherals matching "CMF Watch" or "Watch".
+     */
+    fun startScan(timeoutMs: Long = 10000) {
+        if (bluetoothAdapter == null || !bluetoothAdapter!!.isEnabled) {
+            Log.e(TAG, "Bluetooth is disabled or unavailable.")
+            _connectionState.value = DeviceConnectionState.ERROR
+            return
+        }
+
+        val scanner = bluetoothAdapter!!.bluetoothLeScanner
+        if (scanner == null) {
+            Log.e(TAG, "BluetoothLeScanner unavailable.")
+            _connectionState.value = DeviceConnectionState.ERROR
+            return
+        }
+
+        _discoveredDevices.value = emptyList()
+        _connectionState.value = DeviceConnectionState.SCANNING
+        isScanning = true
+
+        Log.i(TAG, "Starting dynamic BLE scan for CMF watches...")
+        scanner.startScan(scanCallback)
+
+        managerScope.launch {
+            delay(timeoutMs)
+            if (isScanning) {
+                stopScan()
+            }
+        }
+    }
+
+    fun stopScan() {
+        if (isScanning && bluetoothAdapter != null && bluetoothAdapter!!.isEnabled) {
+            val scanner = bluetoothAdapter!!.bluetoothLeScanner
+            scanner?.stopScan(scanCallback)
+            isScanning = false
+            Log.i(TAG, "BLE scan stopped. Found ${_discoveredDevices.value.size} devices.")
+            if (_discoveredDevices.value.isNotEmpty()) {
+                _connectionState.value = DeviceConnectionState.DEVICES_FOUND
+            } else if (_connectionState.value == DeviceConnectionState.SCANNING) {
+                _connectionState.value = DeviceConnectionState.IDLE
+            }
+        }
+    }
+
+    private val scanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            val device = result.device
+            val name = device.name ?: return
+
+            if (name.contains("CMF Watch", ignoreCase = true) || name.contains("Watch", ignoreCase = true)) {
+                val discovered = DiscoveredDevice(
+                    name = name,
+                    address = device.address,
+                    rssi = result.rssi
+                )
+
+                val current = _discoveredDevices.value.toMutableList()
+                if (current.none { it.address == discovered.address }) {
+                    current.add(discovered)
+                    _discoveredDevices.value = current
+                    _connectionState.value = DeviceConnectionState.DEVICES_FOUND
+                    Log.i(TAG, "Discovered CMF Watch: $name (${device.address}, RSSI ${result.rssi})")
+                }
+            }
+        }
+
+        override fun onScanFailed(errorCode: Int) {
+            Log.e(TAG, "BLE Scan failed with errorCode $errorCode")
+            isScanning = false
+            _connectionState.value = DeviceConnectionState.ERROR
+        }
+    }
+
     fun connect(macAddress: String) {
+        stopScan()
+
         if (bluetoothAdapter == null || !bluetoothAdapter!!.isEnabled) {
             Log.e(TAG, "Bluetooth disabled or unavailable.")
             _connectionState.value = DeviceConnectionState.ERROR
@@ -78,6 +162,7 @@ class CmfBleManager(
     }
 
     fun disconnect() {
+        stopScan()
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null
@@ -99,6 +184,7 @@ class CmfBleManager(
 
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             Log.i(TAG, "MTU configured to $mtu. Discovering services...")
+            _connectionState.value = DeviceConnectionState.DISCOVERING_SERVICES
             gatt.discoverServices()
         }
 
@@ -119,6 +205,7 @@ class CmfBleManager(
             cmdCharacteristic = service.getCharacteristic(CMF_CMD_CHAR_UUID)
             if (cmdCharacteristic != null) {
                 Log.i(TAG, "Subscribing to Command notifications ($CMF_CMD_CHAR_UUID)...")
+                _connectionState.value = DeviceConnectionState.SUBSCRIBING
                 gatt.setCharacteristicNotification(cmdCharacteristic, true)
                 val descriptor = cmdCharacteristic!!.getDescriptor(CCCD_DESCRIPTOR_UUID)
                 descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE

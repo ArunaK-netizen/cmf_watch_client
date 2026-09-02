@@ -1,6 +1,6 @@
 # CMF Watch Companion App Implementation Status & End-to-End Audit
 
-This document provides a comprehensive end-to-end audit of every layer in the application stack:
+This document tracks feature status against the Python CMF Watch Client reference (`cmf_watch_client`):
 
 $$\text{CMF Watch Pro 2} \xrightarrow{\text{BLE}} \text{Protocol Driver} \xrightarrow{\text{Android App}} \text{Room Local DB} \xrightarrow{\text{Sync Engine}} \text{Backend API} \xrightarrow{\text{MongoDB}} \text{Analytics} \xrightarrow{\text{Compose UI}}$$
 
@@ -9,20 +9,23 @@ $$\text{CMF Watch Pro 2} \xrightarrow{\text{BLE}} \text{Protocol Driver} \xright
 ## 1. Feature Implementation Matrix
 
 Status Legend:
-- ✅ **Fully functional**: Implemented, native Android driver ready, verified against real CMF Watch Pro 2.
-- 🟡 **Partially implemented**: Protocol/driver code written; hardware field validation in progress.
-- 🔴 **UI / placeholder only**: UI layout created; data persistence missing.
-- ⚠️ **Blocked by unavailable watch capability**: Hardware or firmware does not stream raw waveform over BLE.
+- ✅ **Fully functional**: Implemented, verified against real physical CMF Watch Pro 2.
+- 🟡 **Partially implemented**: Protocol driver code written; hardware field verification in progress.
+- 🔴 **UI / placeholder only**: UI layout created; backend or real data connection pending.
+- ⚠️ **Blocked by unavailable watch capability**: Hardware/firmware does not stream raw waveform over BLE.
 
-| Feature / Metric | UI Layer | Data Truth Status | Android BLE Driver (`CmfBleManager`) | Python BLE Core | Local Room DB | Current Status |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Watch Discovery & Pairing** | 🟡 UI | Truthful (`DISCONNECTED`) | 🟡 Implemented (`CmfBleManager`) | ✅ Working (`cmf_watch_client.ble`) | 🔴 Pending | 🟡 **Partially implemented** |
-| **GATT Session Key Handshake** | 🟡 UI | Truthful | 🟡 Implemented (`0xFFFF 8047`) | ✅ Working (`0xFFFF 8047`) | 🔴 Pending | 🟡 **Partially implemented** |
-| **Battery Level %** | 🟡 UI | Truthful (`--%`) | 🟡 Implemented (`0x005C`) | ✅ Working (`0x005C`) | 🔴 Pending | 🟡 **Partially implemented** |
-| **Heart Rate (24h / Spot)** | 🟡 UI | Truthful (`--`) | 🟡 Implemented (`0x0053`) | ✅ Working (`0x0053`) | 🔴 Pending | 🟡 **Partially implemented** |
-| **Resting Heart Rate** | 🟡 UI | Truthful (`--`) | 🟡 Implemented (`0x00DA`) | ✅ Working (`0x00DA`) | 🔴 Pending | 🟡 **Partially implemented** |
-| **Stress Score (1–99)** | 🟡 UI | Truthful (`--`) | 🟡 Implemented (`0x009D`) | ✅ Working (`0x009D`) | 🔴 Pending | 🟡 **Partially implemented** |
-| **SpO₂ Saturation (%)** | 🟡 UI | Truthful (`--`) | 🟡 Implemented (`0x0055`) | ✅ Working (`0x0055`) | 🔴 Pending | 🟡 **Partially implemented** |
-| **Steps, Distance, Calories**| 🟡 UI | Truthful (`--`) | 🟡 Implemented (`0x0056`) | ✅ Working (`0x0056`) | 🔴 Pending | 🟡 **Partially implemented** |
-| **Sleep Duration & Stages** | 🟡 UI | Truthful (`--`) | 🟡 Implemented (`0x0058`) | ✅ Working (`0x0058`) | 🔴 Pending | 🟡 **Partially implemented** |
-| **Workout Summaries & GPS** | 🔴 UI | Truthful | 🟡 Implemented (`0x0057`/`0xA05A`)| ✅ Working (`0x0057`/`0xA05A`) | 🔴 Pending | 🟡 **Partially implemented** |
+| Feature / Metric | UI Layer | Python Reference (`cmf_watch_client`) | Android Driver (`CmfBleManager`) | Physical Hardware Verified | Current Status |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **Dynamic BLE Scan & Selection** | 🔴 Pending | ✅ Working (`CmfWatchClient.discover`) | 🟡 Implementing | 🟡 In Progress | 🟡 **Partially implemented** |
+| **GATT Connection & CCCD** | 🟡 UI | ✅ Working (`CmfWatchClient.connect`) | 🟡 Implemented | 🟡 In Progress | 🟡 **Partially implemented** |
+| **Session Key Handshake** | 🟡 UI | ✅ Working (`authenticate_session`)| 🟡 Implemented | 🟡 In Progress | 🟡 **Partially implemented** |
+| **Mandatory Post-Auth Set Time**| N/A | ✅ Working (`set_device_time`) | 🟡 Implemented | 🟡 In Progress | 🟡 **Partially implemented** |
+| **Battery Query (0x005C)** | 🟡 UI | ✅ Working (`fetch_battery`) | 🟡 Implemented | 🟡 In Progress | 🟡 **Partially implemented** |
+| **Heart Rate Stream (0x0053)** | 🟡 UI | ✅ Working (`decode_heart_rate`) | 🟡 Implemented | 🟡 In Progress | 🟡 **Partially implemented** |
+| **Step Interval Counts (0x0056)**| 🟡 UI | ✅ Working (`decode_activity_data`)| 🟡 Implemented | 🟡 In Progress | 🟡 **Partially implemented** |
+| **Sleep Sessions (0x0058)** | 🟡 UI | ✅ Working (`decode_sleep_data`) | 🟡 Implemented | 🟡 In Progress | 🟡 **Partially implemented** |
+| **Stress Index (0x009D)** | 🟡 UI | ✅ Working (`decode_stress`) | 🟡 Implemented | 🟡 In Progress | 🟡 **Partially implemented** |
+| **SpO₂ Saturation (0x0055)** | 🟡 UI | ✅ Working (`decode_spo2`) | 🟡 Implemented | 🟡 In Progress | 🟡 **Partially implemented** |
+| **Workout Summaries & GPS** | 🔴 UI | ✅ Working (`decode_workout_gps`)| 🟡 Implemented | 🟡 In Progress | 🟡 **Partially implemented** |
+
+*Note: No feature is marked as fully functional (✅) until verified against the physical CMF Watch Pro 2.*

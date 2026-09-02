@@ -47,4 +47,12 @@ experiments/
 data/
 captures/
 
+# Android Build & Local Properties
+.gradle/
+android/.gradle/
+android/local.properties
+android/*/build/
+android/app/build/
+
+
 

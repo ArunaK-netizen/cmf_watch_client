@@ -1,0 +1,85 @@
+package com.cmfwatch.companion.ui.home
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.cmfwatch.companion.ble.CmfBleManager
+import com.cmfwatch.companion.domain.models.DashboardSummary
+import com.cmfwatch.companion.domain.models.DeviceConnectionState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.time.Instant
+
+class HomeViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val bleManager = CmfBleManager(application.applicationContext)
+
+    private val _uiState = MutableStateFlow(
+        DashboardSummary(
+            latestHeartRate = null,
+            restingHeartRate = null,
+            todaySteps = 0,
+            todayDistanceKm = 0.0f,
+            todayCaloriesKcal = 0,
+            lastSleepMinutes = null,
+            latestStressScore = null,
+            deviceBatteryLevel = 0,
+            connectionState = DeviceConnectionState.DISCONNECTED,
+            lastSyncedAt = null
+        )
+    )
+    val uiState: StateFlow<DashboardSummary> = _uiState.asStateFlow()
+
+    init {
+        // Observe Connection State
+        viewModelScope.launch {
+            bleManager.connectionState.collect { state ->
+                _uiState.value = _uiState.value.copy(connectionState = state)
+            }
+        }
+
+        // Observe Battery Telemetry
+        viewModelScope.launch {
+            bleManager.batteryState.collect { battery ->
+                if (battery != null) {
+                    _uiState.value = _uiState.value.copy(deviceBatteryLevel = battery.level)
+                }
+            }
+        }
+
+        // Observe Live Heart Rate Samples
+        viewModelScope.launch {
+            bleManager.heartRateFlow.collect { hr ->
+                _uiState.value = _uiState.value.copy(
+                    latestHeartRate = hr.bpm,
+                    lastSyncedAt = Instant.now()
+                )
+            }
+        }
+
+        // Observe Step Intervals
+        viewModelScope.launch {
+            bleManager.stepFlow.collect { step ->
+                val newSteps = _uiState.value.todaySteps + step.steps
+                val newDist = _uiState.value.todayDistanceKm + (step.distanceMeters / 1000.0f)
+                val newKcal = _uiState.value.todayCaloriesKcal + step.caloriesKcal.toInt()
+
+                _uiState.value = _uiState.value.copy(
+                    todaySteps = newSteps,
+                    todayDistanceKm = newDist,
+                    todayCaloriesKcal = newKcal
+                )
+            }
+        }
+    }
+
+    fun connectToWatch(macAddress: String) {
+        bleManager.connect(macAddress)
+    }
+
+    fun triggerSync() {
+        bleManager.triggerSync()
+    }
+}

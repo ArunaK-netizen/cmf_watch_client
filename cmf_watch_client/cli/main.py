@@ -71,7 +71,7 @@ async def cmd_pair(args) -> None:
     try:
         authkey = await client.pair_first_time()
         authkey_hex = authkey.hex()
-        print(f"\n[+] Pairing successful! Derived authkey: {authkey_hex}")
+        print("\n[+] Pairing successful! Authkey derived and saved securely.")
 
         cfg["mac_address"] = mac
         cfg["authkey"] = authkey_hex

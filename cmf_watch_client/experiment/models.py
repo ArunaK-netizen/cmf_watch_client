@@ -1,19 +1,15 @@
 """
 Pydantic v2 typed models for Experiment 01 (Distance & Cadence Data Collection).
-Enforces schema versioning, strict typing, and separation of raw observations from derived metrics.
+Enforces schema versioning (1.0), strict typing, and clear separation between:
+1. System Under Test (Watch) metrics
+2. Independent Reference measurements (Strava, Track, Survey Wheel)
+3. Derived error metrics
 """
 
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 from pydantic import BaseModel, Field
-
-
-class GroundTruthMethod(str, Enum):
-    TRACK = "track"
-    SURVEY_WHEEL = "survey_wheel"
-    MEASURED_ROUTE = "measured_route"
-    OTHER = "other"
 
 
 class ActivityType(str, Enum):
@@ -37,30 +33,14 @@ class TrialStatus(str, Enum):
 
 
 class RawSamplePoint(BaseModel):
-    """Single raw time-stamped observation captured during trial execution."""
+    """Single raw time-stamped observation point captured during active session."""
     timestamp: datetime = Field(description="Sample UTC timestamp")
-    elapsed_seconds: float = Field(ge=0.0, description="Elapsed time in seconds since trial start")
-    steps: int = Field(ge=0, description="Accumulated step count from watch")
-    distance_meters: float = Field(ge=0.0, description="Accumulated distance in meters reported by watch")
-    heart_rate: Optional[int] = Field(default=None, ge=0, le=255, description="Current heart rate (bpm)")
-    latitude: Optional[float] = Field(default=None, description="GPS Latitude coordinate in decimal degrees")
-    longitude: Optional[float] = Field(default=None, description="GPS Longitude coordinate in decimal degrees")
-
-
-class TrialMetadata(BaseModel):
-    """Metadata describing trial conditions, user profile, and ground-truth measurement method."""
-    experiment_id: str = Field(default="experiment_01_distance", description="Parent experiment ID")
-    trial_id: str = Field(description="Unique trial identifier (e.g. trial_001)")
-    date_time: datetime = Field(description="Trial execution start timestamp")
-    activity: ActivityType = Field(default=ActivityType.WALK, description="Physical activity type")
-    intensity: IntensityLevel = Field(default=IntensityLevel.NORMAL, description="Self-reported pace intensity")
-    ground_truth_method: GroundTruthMethod = Field(
-        default=GroundTruthMethod.TRACK, description="Method used for ground-truth measurement"
-    )
-    target_distance_m: Optional[float] = Field(default=None, ge=0.0, description="Target trial distance in meters")
-    user_height_cm: Optional[float] = Field(default=None, ge=50.0, le=250.0, description="User height in cm")
-    status: TrialStatus = Field(default=TrialStatus.COMPLETED, description="Completion status of trial")
-    notes: Optional[str] = Field(default=None, description="Free-form observational notes")
+    elapsed_seconds: float = Field(ge=0.0, description="Elapsed seconds since session start")
+    steps: int = Field(ge=0, description="Accumulated step count")
+    distance_meters: float = Field(ge=0.0, description="Accumulated watch distance in meters")
+    heart_rate: Optional[int] = Field(default=None, ge=0, le=255, description="Heart rate in bpm")
+    latitude: Optional[float] = Field(default=None, description="GPS Latitude coordinate")
+    longitude: Optional[float] = Field(default=None, description="GPS Longitude coordinate")
 
 
 class RawObservations(BaseModel):
@@ -68,27 +48,57 @@ class RawObservations(BaseModel):
     start_time: datetime = Field(description="Trial start UTC timestamp")
     end_time: Optional[datetime] = Field(default=None, description="Trial end UTC timestamp")
     total_duration_seconds: float = Field(ge=0.0, description="Active trial duration in seconds")
-    watch_final_steps: int = Field(ge=0, description="Final step count accumulated during trial")
-    watch_final_distance_m: float = Field(ge=0.0, description="Final distance in meters reported by watch")
     samples: List[RawSamplePoint] = Field(default_factory=list, description="Ordered time-series sample stream")
 
 
+class TrialMetadata(BaseModel):
+    """Metadata describing trial conditions, activity type, and user height parameters."""
+    experiment_id: str = Field(default="experiment_01_distance", description="Parent experiment ID")
+    trial_id: str = Field(description="Unique trial identifier (e.g. trial_001)")
+    date_time: datetime = Field(description="Trial execution start timestamp")
+    activity: ActivityType = Field(default=ActivityType.WALK, description="Physical activity type")
+    intensity: IntensityLevel = Field(default=IntensityLevel.NORMAL, description="Self-reported pace intensity")
+    planned_distance_m: Optional[float] = Field(default=None, ge=0.0, description="Optional target distance parameter")
+    user_height_cm: Optional[float] = Field(default=None, ge=50.0, le=250.0, description="User height in cm")
+    status: TrialStatus = Field(default=TrialStatus.COMPLETED, description="Completion status of trial")
+
+
+class WatchSummaryData(BaseModel):
+    """Finalized metrics reported directly by the CMF Watch (System Under Test)."""
+    watch_final_steps: int = Field(ge=0, description="Final step count reported by watch")
+    watch_final_distance_m: float = Field(ge=0.0, description="Final distance in meters reported by watch")
+    watch_total_duration_seconds: float = Field(ge=0.0, description="Total active workout duration in seconds")
+    watch_calories_kcal: Optional[float] = Field(default=None, ge=0.0, description="Active calories reported by watch")
+    watch_average_hr: Optional[float] = Field(default=None, ge=0.0, le=255.0, description="Average workout heart rate")
+    watch_average_cadence_spm: float = Field(ge=0.0, description="Average step cadence in spm")
+    watch_calculated_mean_stride_m: float = Field(ge=0.0, description="Watch calculated mean stride length in meters")
+
+
+class ReferenceData(BaseModel):
+    """Independent reference measurements (Strava, Measured Track, Surveyor Wheel, etc.)."""
+    reference_method: str = Field(description="Reference source (e.g. 'strava', 'track', 'survey_wheel')")
+    reference_distance_m: float = Field(ge=0.0, description="Independent physical distance in meters")
+    reference_duration_seconds: Optional[float] = Field(default=None, ge=0.0, description="Independent duration in seconds")
+    reference_source: Optional[str] = Field(default=None, description="Reference device/app (e.g. 'Garmin Forerunner', 'Strava')")
+    notes: Optional[str] = Field(default=None, description="Free-form observational notes")
+
+
 class DerivedMetrics(BaseModel):
-    """Derived analysis parameters and benchmark error metrics (separated from raw data)."""
-    ground_truth_distance_m: Optional[float] = Field(default=None, description="Physical measured ground truth distance")
-    watch_reported_distance_m: float = Field(ge=0.0, description="Total distance reported by watch baseline")
-    gps_calculated_distance_m: float = Field(default=0.0, ge=0.0, description="Cumulative distance from GPS track")
-    average_cadence_spm: float = Field(ge=0.0, description="Average step cadence in steps per minute (spm)")
-    calculated_mean_stride_m: float = Field(ge=0.0, description="Computed mean stride length in meters")
-    baseline_error_m: Optional[float] = Field(default=None, description="Absolute error: watch_distance - ground_truth")
-    baseline_error_percentage: Optional[float] = Field(
-        default=None, description="Percentage error: (watch_distance - ground_truth) / ground_truth * 100"
+    """Computed error metrics evaluating Watch vs. Independent Reference."""
+    distance_error_m: Optional[float] = Field(default=None, description="Watch distance - Reference distance (meters)")
+    distance_error_percentage: Optional[float] = Field(
+        default=None, description="Percentage error: (Watch - Ref) / Ref * 100"
+    )
+    duration_difference_seconds: Optional[float] = Field(
+        default=None, description="Watch duration - Reference duration (seconds)"
     )
 
 
 class ExperimentTrial(BaseModel):
-    """Complete, versioned, reproducible experiment trial data document."""
+    """Complete, versioned, reproducible experiment trial document."""
     schema_version: str = Field(default="1.0", description="Data schema version specification")
     metadata: TrialMetadata
-    raw_observations: RawObservations
+    watch_data: WatchSummaryData
+    reference_data: Optional[ReferenceData] = Field(default=None)
     derived_metrics: DerivedMetrics
+    raw_observations: RawObservations

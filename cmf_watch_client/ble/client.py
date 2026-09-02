@@ -188,7 +188,7 @@ class CmfWatchClient:
         # Compute authkey (K1)
         self.authkey = derive_auth_key(rnd1, rnd2, self._secret)
         self.session_key = self.authkey
-        logger.info(f"Derived long-term authkey: {self.authkey.hex()}")
+        logger.info("Derived long-term authkey: [REDACTED]")
         return self.authkey
 
     async def authenticate_session(self) -> bool:
@@ -222,7 +222,7 @@ class CmfWatchClient:
 
         # Step 3: Derive sessionKey
         self.session_key = derive_session_key(nonce_reply, self.authkey)
-        logger.info(f"Session key established: {self.session_key.hex()}")
+        logger.info("Session key established: [REDACTED]")
 
         # Step 4: AUTHENTICATED_CONFIRM_REQUEST (cmd: FFFF 804D) -> expect AUTHENTICATED_CONFIRM_REPLY (FFFF 0004)
         logger.info("Confirming session authentication (AUTHENTICATED_CONFIRM_REQUEST)...")

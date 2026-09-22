@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cmfwatch.companion.domain.models.HeartRateSample
 import com.cmfwatch.companion.ui.theme.*
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -46,6 +47,12 @@ enum class HrTimeRange(val label: String) {
     YEAR("Year")
 }
 
+data class ChartDataPoint(
+    val xRatio: Float, // 0.0f to 1.0f along chart width
+    val bpm: Int,
+    val timeText: String
+)
+
 @Composable
 fun HeartRateDetailScreen(
     allSamples: List<HeartRateSample>,
@@ -54,18 +61,87 @@ fun HeartRateDetailScreen(
 ) {
     var selectedRange by remember { mutableStateOf(HrTimeRange.DAY) }
 
-    // Filter samples based on time range
-    val filteredSamples = remember(allSamples, selectedRange) {
+    // Dynamic calculations for chart points & timeline labels based on selected range
+    val (chartPoints, timelineLabels) = remember(allSamples, selectedRange) {
+        val zoneId = ZoneId.systemDefault()
+        val today = LocalDate.now(zoneId)
+
         when (selectedRange) {
-            HrTimeRange.DAY -> allSamples
-            HrTimeRange.WEEK -> allSamples.takeLast(70)
-            HrTimeRange.MONTH -> allSamples.takeLast(300)
-            HrTimeRange.YEAR -> allSamples
+            HrTimeRange.DAY -> {
+                val labels = listOf("12 AM", "6 AM", "12 PM", "6 PM", "12 AM")
+                val timeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
+
+                val points = allSamples.map { sample ->
+                    val time = sample.timestamp.atZone(zoneId).toLocalTime()
+                    val minuteOfDay = time.hour * 60 + time.minute
+                    val xRatio = (minuteOfDay / 1440f).coerceIn(0f, 1f)
+                    val timeStr = sample.timestamp.atZone(zoneId).format(timeFormatter)
+                    ChartDataPoint(xRatio, sample.bpm, timeStr)
+                }.sortedBy { it.xRatio }
+
+                Pair(points, labels)
+            }
+            HrTimeRange.WEEK -> {
+                val dayFormatter = DateTimeFormatter.ofPattern("EEE", Locale.getDefault())
+                val labels = (6 downTo 0).map { daysBack ->
+                    today.minusDays(daysBack.toLong()).format(dayFormatter)
+                }
+
+                val points = mutableListOf<ChartDataPoint>()
+                for (i in 0..6) {
+                    val dayDate = today.minusDays((6 - i).toLong())
+                    val samplesOnDay = allSamples.filter {
+                        it.timestamp.atZone(zoneId).toLocalDate() == dayDate
+                    }
+                    if (samplesOnDay.isNotEmpty()) {
+                        val avgBpm = samplesOnDay.map { it.bpm }.average().toInt()
+                        val xRatio = i / 6f
+                        val labelStr = dayDate.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault()))
+                        points.add(ChartDataPoint(xRatio, avgBpm, labelStr))
+                    }
+                }
+                Pair(points, labels)
+            }
+            HrTimeRange.MONTH -> {
+                val labels = listOf("Day 1", "Day 7", "Day 14", "Day 21", "Day 30")
+                val points = mutableListOf<ChartDataPoint>()
+                for (i in 0..29) {
+                    val dayDate = today.minusDays((29 - i).toLong())
+                    val samplesOnDay = allSamples.filter {
+                        it.timestamp.atZone(zoneId).toLocalDate() == dayDate
+                    }
+                    if (samplesOnDay.isNotEmpty()) {
+                        val avgBpm = samplesOnDay.map { it.bpm }.average().toInt()
+                        val xRatio = i / 29f
+                        val labelStr = dayDate.format(DateTimeFormatter.ofPattern("MMM d", Locale.getDefault()))
+                        points.add(ChartDataPoint(xRatio, avgBpm, labelStr))
+                    }
+                }
+                Pair(points, labels)
+            }
+            HrTimeRange.YEAR -> {
+                val labels = listOf("Jan", "Mar", "May", "Jul", "Sep", "Nov")
+                val points = mutableListOf<ChartDataPoint>()
+                for (m in 0..11) {
+                    val targetMonth = today.minusMonths((11 - m).toLong())
+                    val samplesInMonth = allSamples.filter {
+                        val sampleDate = it.timestamp.atZone(zoneId).toLocalDate()
+                        sampleDate.year == targetMonth.year && sampleDate.month == targetMonth.month
+                    }
+                    if (samplesInMonth.isNotEmpty()) {
+                        val avgBpm = samplesInMonth.map { it.bpm }.average().toInt()
+                        val xRatio = m / 11f
+                        val labelStr = targetMonth.format(DateTimeFormatter.ofPattern("MMM yyyy", Locale.getDefault()))
+                        points.add(ChartDataPoint(xRatio, avgBpm, labelStr))
+                    }
+                }
+                Pair(points, labels)
+            }
         }
     }
 
-    val latestBpm = filteredSamples.lastOrNull()?.bpm
-    val bpms = filteredSamples.map { it.bpm }
+    val latestBpm = allSamples.lastOrNull()?.bpm
+    val bpms = chartPoints.map { it.bpm }
     val avgBpm = if (bpms.isNotEmpty()) bpms.average().toInt() else null
     val highestBpm = bpms.maxOrNull()
     val lowestBpm = bpms.minOrNull()
@@ -146,12 +222,12 @@ fun HeartRateDetailScreen(
         // 3. Main Chart & Heart Rate Display Card
         item {
             MainHeartRateChartCard(
-                selectedRange = selectedRange,
                 bpm = latestBpm,
                 avgBpm = avgBpm,
                 highestBpm = highestBpm,
                 lowestBpm = lowestBpm,
-                samples = filteredSamples
+                chartPoints = chartPoints,
+                timelineLabels = timelineLabels
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -159,7 +235,7 @@ fun HeartRateDetailScreen(
 
         // 4. Heart Rate Zones Card
         item {
-            HeartRateZonesCard(samples = filteredSamples)
+            HeartRateZonesCard(samples = allSamples)
 
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -224,30 +300,15 @@ fun TimeRangeSegmentedControl(
 
 @Composable
 fun MainHeartRateChartCard(
-    selectedRange: HrTimeRange,
     bpm: Int?,
     avgBpm: Int?,
     highestBpm: Int?,
     lowestBpm: Int?,
-    samples: List<HeartRateSample>,
+    chartPoints: List<ChartDataPoint>,
+    timelineLabels: List<String>,
     modifier: Modifier = Modifier
 ) {
-    var selectedSampleIndex by remember { mutableStateOf<Int?>(null) }
-
-    val timelineLabels = remember(selectedRange) {
-        when (selectedRange) {
-            HrTimeRange.DAY -> listOf("12 AM", "6 AM", "12 PM", "6 PM", "12 AM")
-            HrTimeRange.WEEK -> {
-                val today = java.time.LocalDate.now()
-                val formatter = DateTimeFormatter.ofPattern("EEE", Locale.getDefault())
-                (6 downTo 0).map { daysBack ->
-                    today.minusDays(daysBack.toLong()).format(formatter)
-                }
-            }
-            HrTimeRange.MONTH -> listOf("Week 1", "Week 2", "Week 3", "Week 4")
-            HrTimeRange.YEAR -> listOf("Jan", "Mar", "May", "Jul", "Sep", "Nov")
-        }
-    }
+    var selectedIndex by remember { mutableStateOf<Int?>(null) }
 
     Box(
         modifier = modifier
@@ -357,25 +418,27 @@ fun MainHeartRateChartCard(
                     .fillMaxWidth()
                     .height(180.dp)
             ) {
-                if (samples.isNotEmpty()) {
-                    val activeIndex = selectedSampleIndex
-                    val activeSample = activeIndex?.let { samples.getOrNull(it) }
+                if (chartPoints.isNotEmpty()) {
+                    val activeIndex = selectedIndex
+                    val activePoint = activeIndex?.let { chartPoints.getOrNull(it) }
 
                     Canvas(
                         modifier = Modifier
                             .fillMaxSize()
-                            .pointerInput(samples) {
+                            .pointerInput(chartPoints) {
                                 detectTapGestures { offset ->
-                                    val stepX = size.width / (samples.size - 1).coerceAtLeast(1)
-                                    val idx = (offset.x / stepX).toInt().coerceIn(0, samples.size - 1)
-                                    selectedSampleIndex = idx
+                                    val plotWidth = size.width - 30.dp.toPx()
+                                    val touchRatio = (offset.x / plotWidth).coerceIn(0f, 1f)
+                                    val nearest = chartPoints.minByOrNull { kotlin.math.abs(it.xRatio - touchRatio) }
+                                    selectedIndex = nearest?.let { chartPoints.indexOf(it) }
                                 }
                             }
-                            .pointerInput(samples) {
+                            .pointerInput(chartPoints) {
                                 detectDragGestures { change, _ ->
-                                    val stepX = size.width / (samples.size - 1).coerceAtLeast(1)
-                                    val idx = (change.position.x / stepX).toInt().coerceIn(0, samples.size - 1)
-                                    selectedSampleIndex = idx
+                                    val plotWidth = size.width - 30.dp.toPx()
+                                    val touchRatio = (change.position.x / plotWidth).coerceIn(0f, 1f)
+                                    val nearest = chartPoints.minByOrNull { kotlin.math.abs(it.xRatio - touchRatio) }
+                                    selectedIndex = nearest?.let { chartPoints.indexOf(it) }
                                 }
                             }
                     ) {
@@ -400,24 +463,24 @@ fun MainHeartRateChartCard(
                             )
                         }
 
-                        // Plot Bezier Line Path
-                        val bpms = samples.map { it.bpm.toFloat().coerceIn(minY, maxY) }
-                        val stepX = if (bpms.size > 1) plotWidth / (bpms.size - 1) else plotWidth
+                        // Map points to canvas coordinates
+                        val drawPoints = chartPoints.map { pt ->
+                            val px = pt.xRatio * plotWidth
+                            val py = height * (1f - (pt.bpm.toFloat() / maxY).coerceIn(0f, 1f))
+                            Offset(px, py)
+                        }
 
                         val path = Path()
-                        if (bpms.size == 1) {
-                            val y = height * (1f - bpms[0] / maxY)
-                            path.moveTo(0f, y)
-                            path.lineTo(plotWidth, y)
-                        } else {
-                            path.moveTo(0f, height * (1f - bpms[0] / maxY))
-                            for (i in 1 until bpms.size) {
-                                val currentX = i * stepX
-                                val currentY = height * (1f - bpms[i] / maxY)
-                                val prevX = (i - 1) * stepX
-                                val prevY = height * (1f - bpms[i - 1] / maxY)
-                                val controlX = (prevX + currentX) / 2f
-                                path.cubicTo(controlX, prevY, controlX, currentY, currentX, currentY)
+                        if (drawPoints.size == 1) {
+                            path.moveTo(0f, drawPoints[0].y)
+                            path.lineTo(plotWidth, drawPoints[0].y)
+                        } else if (drawPoints.isNotEmpty()) {
+                            path.moveTo(drawPoints[0].x, drawPoints[0].y)
+                            for (i in 1 until drawPoints.size) {
+                                val current = drawPoints[i]
+                                val prev = drawPoints[i - 1]
+                                val controlX = (prev.x + current.x) / 2f
+                                path.cubicTo(controlX, prev.y, controlX, current.y, current.x, current.y)
                             }
                         }
 
@@ -443,15 +506,14 @@ fun MainHeartRateChartCard(
                         )
 
                         // Draw Selected Inspection Point Highlight Line & Marker
-                        if (activeIndex != null && activeIndex in samples.indices) {
-                            val highlightX = activeIndex * stepX
-                            val highlightY = height * (1f - bpms[activeIndex] / maxY)
+                        if (activeIndex != null && activeIndex in drawPoints.indices) {
+                            val highlightPt = drawPoints[activeIndex]
 
                             // Vertical guideline
                             drawLine(
                                 color = HeartRateRed.copy(alpha = 0.5f),
-                                start = Offset(highlightX, 0f),
-                                end = Offset(highlightX, height),
+                                start = Offset(highlightPt.x, 0f),
+                                end = Offset(highlightPt.x, height),
                                 strokeWidth = 1.5.dp.toPx(),
                                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f)
                             )
@@ -460,12 +522,12 @@ fun MainHeartRateChartCard(
                             drawCircle(
                                 color = SurfaceWhite,
                                 radius = 7.dp.toPx(),
-                                center = Offset(highlightX, highlightY)
+                                center = highlightPt
                             )
                             drawCircle(
                                 color = HeartRateRed,
                                 radius = 5.dp.toPx(),
-                                center = Offset(highlightX, highlightY)
+                                center = highlightPt
                             )
                         }
                     }
@@ -484,10 +546,7 @@ fun MainHeartRateChartCard(
                     }
 
                     // Floating Tooltip Pill for Active Selection
-                    activeSample?.let { sample ->
-                        val timeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
-                        val timeStr = sample.timestamp.atZone(ZoneId.systemDefault()).format(timeFormatter)
-
+                    activePoint?.let { pt ->
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
@@ -499,14 +558,14 @@ fun MainHeartRateChartCard(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = "${sample.bpm} bpm",
+                                    text = "${pt.bpm} bpm",
                                     fontFamily = AppFontFamily,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
                                     color = TextPrimary
                                 )
                                 Text(
-                                    text = timeStr,
+                                    text = pt.timeText,
                                     fontFamily = AppFontFamily,
                                     fontSize = 10.sp,
                                     color = TextSecondary
@@ -531,7 +590,7 @@ fun MainHeartRateChartCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // X-Axis Time Labels
+            // Dynamic X-Axis Time Labels
             Row(
                 modifier = Modifier.fillMaxWidth().padding(end = 30.dp),
                 horizontalArrangement = Arrangement.SpaceBetween

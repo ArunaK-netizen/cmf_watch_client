@@ -714,6 +714,34 @@ fun HeartRateZonesCard(
     val lightPct = if (hasData) (lightCount * 100) / total else 0
     val restingPct = if (hasData) (restingCount * 100) / total else 0
 
+    // Compute actual time duration spent in each zone based on timestamp differences
+    val zoneMinutes = remember(samples) {
+        val result = mutableMapOf("Peak" to 0, "Cardio" to 0, "Fat Burn" to 0, "Light" to 0, "Resting" to 0)
+        if (samples.isNotEmpty()) {
+            val sorted = samples.sortedBy { it.timestamp }
+            for (i in sorted.indices) {
+                val current = sorted[i]
+                val zoneName = when {
+                    current.bpm >= 150 -> "Peak"
+                    current.bpm in 130..149 -> "Cardio"
+                    current.bpm in 110..129 -> "Fat Burn"
+                    current.bpm in 90..109 -> "Light"
+                    else -> "Resting"
+                }
+
+                val intervalMins = if (i > 0) {
+                    val diffSec = (current.timestamp.epochSecond - sorted[i - 1].timestamp.epochSecond)
+                    (diffSec / 60L).coerceIn(1L, 15L).toInt()
+                } else {
+                    1
+                }
+
+                result[zoneName] = (result[zoneName] ?: 0) + intervalMins
+            }
+        }
+        result
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -744,15 +772,15 @@ fun HeartRateZonesCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            ZoneRow(label = "Peak", color = Color(0xFFFF453A), pct = peakPct, count = peakCount, hasData = hasData)
+            ZoneRow(label = "Peak", color = Color(0xFFFF453A), pct = peakPct, minutesTotal = zoneMinutes["Peak"] ?: 0, hasData = hasData)
             Spacer(modifier = Modifier.height(12.dp))
-            ZoneRow(label = "Cardio", color = Color(0xFFFF9500), pct = cardioPct, count = cardioCount, hasData = hasData)
+            ZoneRow(label = "Cardio", color = Color(0xFFFF9500), pct = cardioPct, minutesTotal = zoneMinutes["Cardio"] ?: 0, hasData = hasData)
             Spacer(modifier = Modifier.height(12.dp))
-            ZoneRow(label = "Fat Burn", color = Color(0xFFFFCC00), pct = fatBurnPct, count = fatBurnCount, hasData = hasData)
+            ZoneRow(label = "Fat Burn", color = Color(0xFFFFCC00), pct = fatBurnPct, minutesTotal = zoneMinutes["Fat Burn"] ?: 0, hasData = hasData)
             Spacer(modifier = Modifier.height(12.dp))
-            ZoneRow(label = "Light", color = Color(0xFF007AFF), pct = lightPct, count = lightCount, hasData = hasData)
+            ZoneRow(label = "Light", color = Color(0xFF007AFF), pct = lightPct, minutesTotal = zoneMinutes["Light"] ?: 0, hasData = hasData)
             Spacer(modifier = Modifier.height(12.dp))
-            ZoneRow(label = "Resting", color = Color(0xFF8E8E93), pct = restingPct, count = restingCount, hasData = hasData)
+            ZoneRow(label = "Resting", color = Color(0xFF8E8E93), pct = restingPct, minutesTotal = zoneMinutes["Resting"] ?: 0, hasData = hasData)
         }
     }
 }
@@ -762,14 +790,13 @@ fun ZoneRow(
     label: String,
     color: Color,
     pct: Int,
-    count: Int,
+    minutesTotal: Int,
     hasData: Boolean
 ) {
-    val minutesTotal = count * 5
     val hours = minutesTotal / 60
     val mins = minutesTotal % 60
     val durationText = when {
-        !hasData -> "0 min"
+        !hasData || minutesTotal == 0 -> "0 min"
         hours > 0 -> "${hours} h ${mins} min"
         else -> "${mins} min"
     }

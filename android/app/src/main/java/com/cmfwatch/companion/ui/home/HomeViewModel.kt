@@ -117,6 +117,30 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        // Observe SpO2 Telemetry
+        viewModelScope.launch {
+            bleManager.spO2Flow.collect { sample ->
+                val updated = _uiState.value.copy(
+                    latestSpO2 = sample.percentage,
+                    lastSyncedAt = Instant.now()
+                )
+                _uiState.value = updated
+                snapshotStore.save(updated)
+            }
+        }
+
+        // Observe Stress Telemetry
+        viewModelScope.launch {
+            bleManager.stressFlow.collect { sample ->
+                val updated = _uiState.value.copy(
+                    latestStressScore = sample.score,
+                    lastSyncedAt = Instant.now()
+                )
+                _uiState.value = updated
+                snapshotStore.save(updated)
+            }
+        }
+
         // Auto-reconnect to preferred saved watch on app launch if not already connected
         snapshotStore.preferredDeviceAddress()?.let { mac ->
             try {
@@ -133,14 +157,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Periodic background sampling timer (every 5 minutes)
+        // Smart periodic sampling timer (every 2 minutes)
         startPeriodicSamplingTimer()
     }
 
     private fun startPeriodicSamplingTimer() {
         viewModelScope.launch {
             while (true) {
-                delay(30_000) // 30 seconds fast auto-sync
+                delay(120_000) // 2 minutes smart sync
                 if (_uiState.value.connectionState == DeviceConnectionState.CONNECTED_PAIRED) {
                     bleManager.fetchBattery()
                     bleManager.triggerSync()

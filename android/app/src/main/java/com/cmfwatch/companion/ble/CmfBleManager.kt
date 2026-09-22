@@ -655,8 +655,8 @@ class CmfBleManager(
                 }
             }
 
-            // SPO2 (0x0055 0x0001)
-            cmd1 == 0x0055 && cmd2 == 0x0001 -> {
+            // SPO2 (0x0055, 0x00DB, 0x00E1)
+            cmd1 == 0x0055 || cmd1 == 0x00DB || cmd1 == 0x00E1 -> {
                 val spO2 = TelemetryDecoders.decodeSpO2(payload)
                 if (spO2 != null) {
                     managerScope.launch { _spO2Flow.emit(spO2) }

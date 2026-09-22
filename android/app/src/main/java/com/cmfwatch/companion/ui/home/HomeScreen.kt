@@ -21,18 +21,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.domain.models.DeviceConnectionState
 import com.cmfwatch.companion.ui.components.ActivityRingsRow
 import com.cmfwatch.companion.ui.components.MoreHealthDataStrip
 import com.cmfwatch.companion.ui.components.RecentActivityList
 import com.cmfwatch.companion.ui.components.VitalsGrid
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.remember
+import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.ui.theme.*
 
 @Composable
 fun HomeScreen(
     summary: DashboardSummary,
     onHeartRateClick: () -> Unit = {},
+    onWatchCardClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -112,11 +116,17 @@ fun HomeScreen(
             val isConnected = summary.connectionState == DeviceConnectionState.CONNECTED_PAIRED ||
                     summary.connectionState == DeviceConnectionState.CONNECTED
 
+            val watchCardInteractionSource = remember { MutableInteractionSource() }
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
                     .background(SurfaceWhite)
+                    .clickable(
+                        interactionSource = watchCardInteractionSource,
+                        indication = null
+                    ) { onWatchCardClick() }
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 Row(

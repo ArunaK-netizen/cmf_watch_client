@@ -57,7 +57,8 @@ fun AppNavigationShell(
             when (currentDestination) {
                 NavDestination.HOME -> HomeScreen(
                     summary = summary,
-                    onHeartRateClick = { isViewingHeartRateDetail = true }
+                    onHeartRateClick = { isViewingHeartRateDetail = true },
+                    onWatchCardClick = { currentDestination = NavDestination.DEVICES }
                 )
                 NavDestination.ACTIVITY -> ActivityScreen(
                     steps = summary.todaySteps,
@@ -69,7 +70,8 @@ fun AppNavigationShell(
                     onStartScan = onStartScan,
                     onConnectDevice = onConnectDevice,
                     onDisconnectDevice = onDisconnectDevice,
-                    onSyncNow = onSyncNow
+                    onSyncNow = onSyncNow,
+                    onBackClick = { currentDestination = NavDestination.HOME }
                 )
                 NavDestination.PROFILE -> SleepScreen(session = null)
             }

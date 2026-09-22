@@ -241,7 +241,7 @@ fun DeviceScreen(
                             icon = Icons.Default.Notifications,
                             iconColor = Color(0xFFFF5252),
                             bgColor = Color(0xFFFFEBEE),
-                            hasBadge = true,
+                            hasBadge = false,
                             onClick = { }
                         )
                         QuickActionButton(

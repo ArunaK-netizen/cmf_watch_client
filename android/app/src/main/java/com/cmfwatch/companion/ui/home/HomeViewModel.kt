@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.cmfwatch.companion.ble.CmfBleManager
+import com.cmfwatch.companion.ble.CmfBleService
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.domain.models.DeviceConnectionState
 import com.cmfwatch.companion.storage.HealthSnapshotStore
@@ -118,6 +119,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
         // Auto-reconnect to preferred saved watch on app launch if not already connected
         snapshotStore.preferredDeviceAddress()?.let { mac ->
+            try {
+                CmfBleService.start(application.applicationContext)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             val currentState = bleManager.connectionState.value
             if (currentState != DeviceConnectionState.CONNECTED_PAIRED &&
                 currentState != DeviceConnectionState.CONNECTED &&
@@ -153,10 +159,20 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun connectToWatch(macAddress: String) {
         snapshotStore.savePreferredDevice(macAddress)
+        try {
+            CmfBleService.start(getApplication())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         bleManager.connect(macAddress)
     }
 
     fun disconnect() {
+        try {
+            CmfBleService.stop(getApplication())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         bleManager.disconnect()
     }
 

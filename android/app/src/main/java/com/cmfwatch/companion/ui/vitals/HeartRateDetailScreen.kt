@@ -146,6 +146,7 @@ fun HeartRateDetailScreen(
         // 3. Main Chart & Heart Rate Display Card
         item {
             MainHeartRateChartCard(
+                selectedRange = selectedRange,
                 bpm = latestBpm,
                 avgBpm = avgBpm,
                 highestBpm = highestBpm,
@@ -223,6 +224,7 @@ fun TimeRangeSegmentedControl(
 
 @Composable
 fun MainHeartRateChartCard(
+    selectedRange: HrTimeRange,
     bpm: Int?,
     avgBpm: Int?,
     highestBpm: Int?,
@@ -231,6 +233,21 @@ fun MainHeartRateChartCard(
     modifier: Modifier = Modifier
 ) {
     var selectedSampleIndex by remember { mutableStateOf<Int?>(null) }
+
+    val timelineLabels = remember(selectedRange) {
+        when (selectedRange) {
+            HrTimeRange.DAY -> listOf("12 AM", "6 AM", "12 PM", "6 PM", "12 AM")
+            HrTimeRange.WEEK -> {
+                val today = java.time.LocalDate.now()
+                val formatter = DateTimeFormatter.ofPattern("EEE", Locale.getDefault())
+                (6 downTo 0).map { daysBack ->
+                    today.minusDays(daysBack.toLong()).format(formatter)
+                }
+            }
+            HrTimeRange.MONTH -> listOf("Week 1", "Week 2", "Week 3", "Week 4")
+            HrTimeRange.YEAR -> listOf("Jan", "Mar", "May", "Jul", "Sep", "Nov")
+        }
+    }
 
     Box(
         modifier = modifier
@@ -519,11 +536,14 @@ fun MainHeartRateChartCard(
                 modifier = Modifier.fillMaxWidth().padding(end = 30.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("12 AM", fontSize = 10.sp, color = TextMuted)
-                Text("6 AM", fontSize = 10.sp, color = TextMuted)
-                Text("12 PM", fontSize = 10.sp, color = TextMuted)
-                Text("6 PM", fontSize = 10.sp, color = TextMuted)
-                Text("12 AM", fontSize = 10.sp, color = TextMuted)
+                timelineLabels.forEach { label ->
+                    Text(
+                        text = label,
+                        fontFamily = AppFontFamily,
+                        fontSize = 10.sp,
+                        color = TextMuted
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

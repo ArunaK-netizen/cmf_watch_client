@@ -162,24 +162,26 @@ fun HeartRateCard(
                         val maxBpm = (bpms.maxOrNull() ?: 120f) + 5f
                         val range = if (maxBpm > minBpm) maxBpm - minBpm else 1f
 
-                        val normalized = bpms.map { (it - minBpm) / range }
+                        val zoneId = java.time.ZoneId.systemDefault()
+                        val points = samples.map { sample ->
+                            val time = sample.timestamp.atZone(zoneId).toLocalTime()
+                            val minuteOfDay = time.hour * 60 + time.minute
+                            val x = (minuteOfDay / 1440f) * width
+                            val y = height * (1f - ((sample.bpm - minBpm) / range).coerceIn(0f, 1f))
+                            Offset(x, y)
+                        }
 
                         val path = Path()
-                        val stepX = if (normalized.size > 1) width / (normalized.size - 1) else width
-
-                        if (normalized.size == 1) {
-                            val y = height * (1f - normalized[0])
-                            path.moveTo(0f, y)
-                            path.lineTo(width, y)
-                        } else {
-                            path.moveTo(0f, height * (1f - normalized[0]))
-                            for (i in 1 until normalized.size) {
-                                val currentX = i * stepX
-                                val currentY = height * (1f - normalized[i])
-                                val prevX = (i - 1) * stepX
-                                val prevY = height * (1f - normalized[i - 1])
-                                val controlX = (prevX + currentX) / 2f
-                                path.cubicTo(controlX, prevY, controlX, currentY, currentX, currentY)
+                        if (points.size == 1) {
+                            path.moveTo(0f, points[0].y)
+                            path.lineTo(width, points[0].y)
+                        } else if (points.isNotEmpty()) {
+                            path.moveTo(points[0].x, points[0].y)
+                            for (i in 1 until points.size) {
+                                val current = points[i]
+                                val prev = points[i - 1]
+                                val controlX = (prev.x + current.x) / 2f
+                                path.cubicTo(controlX, prev.y, controlX, current.y, current.x, current.y)
                             }
                         }
 

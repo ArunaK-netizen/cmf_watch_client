@@ -39,6 +39,15 @@ class CmfBleManager(
     companion object {
         private const val TAG = "CmfBleManager"
 
+        @Volatile
+        private var INSTANCE: CmfBleManager? = null
+
+        fun getInstance(context: Context, authKeyHex: String? = null): CmfBleManager {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: CmfBleManager(context.applicationContext, authKeyHex).also { INSTANCE = it }
+            }
+        }
+
         val CMF_SERVICE_UUID: UUID = UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb")
         val CMF_CMD_CHAR_UUID: UUID = UUID.fromString("0000fff1-0000-1000-8000-00805f9b34fb")
         val CMF_CMD_WRITE_CHAR_UUID: UUID = UUID.fromString("0000fff2-0000-1000-8000-00805f9b34fb")
@@ -228,8 +237,24 @@ class CmfBleManager(
         }
     }
 
+    private var userExplicitDisconnect = false
+    private var lastConnectedMac: String? = null
+
     fun connect(macAddress: String) {
         stopScan()
+
+        // Skip redundant reconnect if already connected/paired to the same device
+        if ((_connectionState.value == DeviceConnectionState.CONNECTED_PAIRED ||
+                    _connectionState.value == DeviceConnectionState.CONNECTED ||
+                    _connectionState.value == DeviceConnectionState.CONNECTING) &&
+            bluetoothGatt?.device?.address == macAddress
+        ) {
+            Log.i(TAG, "Already connected or connecting to $macAddress. Preserving GATT session.")
+            return
+        }
+
+        userExplicitDisconnect = false
+        lastConnectedMac = macAddress
 
         if (bluetoothAdapter == null || !bluetoothAdapter!!.isEnabled) {
             Log.e(TAG, "Bluetooth disabled or unavailable.")
@@ -254,6 +279,7 @@ class CmfBleManager(
     }
 
     fun disconnect() {
+        userExplicitDisconnect = true
         stopScan()
         try {
             bluetoothGatt?.disconnect()
@@ -279,6 +305,18 @@ class CmfBleManager(
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.w(TAG, "GATT disconnected. Status: $status")
                 _connectionState.value = DeviceConnectionState.DISCONNECTED
+
+                // Auto-reconnect if link dropped unexpectedly without explicit user disconnect
+                if (!userExplicitDisconnect && lastConnectedMac != null) {
+                    val macToReconnect = lastConnectedMac!!
+                    managerScope.launch {
+                        delay(3000)
+                        if (!userExplicitDisconnect && _connectionState.value == DeviceConnectionState.DISCONNECTED) {
+                            Log.i(TAG, "Attempting background auto-reconnect to $macToReconnect...")
+                            connect(macToReconnect)
+                        }
+                    }
+                }
             }
         }
 

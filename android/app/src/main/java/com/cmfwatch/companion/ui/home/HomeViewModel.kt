@@ -19,7 +19,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val snapshotStore = HealthSnapshotStore(application.applicationContext)
     private val telemetryStore = LocalTelemetryStore(application.applicationContext)
-    private val bleManager = CmfBleManager(application.applicationContext)
+    private val bleManager = CmfBleManager.getInstance(application.applicationContext)
 
     private val _uiState = MutableStateFlow(
         DashboardSummary(
@@ -32,7 +32,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             lastSleepMinutes = null,
             latestStressScore = null,
             deviceBatteryLevel = null,
-            connectionState = DeviceConnectionState.IDLE,
+            connectionState = bleManager.connectionState.value,
             lastSyncedAt = null,
             discoveredDevices = emptyList(),
             hrSamplesToday = emptyList(),
@@ -51,6 +51,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
         _uiState.value = cached.copy(
             latestHeartRate = initialBpm,
+            connectionState = bleManager.connectionState.value,
             hrSamplesToday = savedHR,
             workoutsToday = savedWorkouts
         )
@@ -115,9 +116,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Auto-reconnect to preferred saved watch on app launch
+        // Auto-reconnect to preferred saved watch on app launch if not already connected
         snapshotStore.preferredDeviceAddress()?.let { mac ->
-            connectToWatch(mac)
+            val currentState = bleManager.connectionState.value
+            if (currentState != DeviceConnectionState.CONNECTED_PAIRED &&
+                currentState != DeviceConnectionState.CONNECTED &&
+                currentState != DeviceConnectionState.SUBSCRIBING
+            ) {
+                connectToWatch(mac)
+            }
         }
 
         // Periodic background sampling timer (every 5 minutes)

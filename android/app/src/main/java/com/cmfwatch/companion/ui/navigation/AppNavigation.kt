@@ -61,9 +61,7 @@ fun AppNavigationShell(
                     onWatchCardClick = { currentDestination = NavDestination.DEVICES }
                 )
                 NavDestination.ACTIVITY -> ActivityScreen(
-                    steps = summary.todaySteps,
-                    distanceKm = summary.todayDistanceKm,
-                    caloriesKcal = summary.todayCaloriesKcal
+                    summary = summary
                 )
                 NavDestination.DEVICES -> DeviceScreen(
                     summary = summary,

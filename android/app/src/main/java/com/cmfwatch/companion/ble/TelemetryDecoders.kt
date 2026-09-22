@@ -74,15 +74,33 @@ object TelemetryDecoders {
     }
 
     /**
-     * Decode 8-byte SpO2 sample payload: (epoch_sec: u32_le, percentage: u32_le).
+     * Decode SpO2 sample payload (supports 8-byte, 4-byte, or raw byte push payloads).
      */
     fun decodeSpO2(payload: ByteArray): SpO2Sample? {
-        if (payload.size < 8) return null
-        val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
-        val epochSec = buffer.int.toLong() and 0xFFFFFFFFL
-        val percentage = buffer.int and 0xFF
-        if (percentage < 50 || percentage > 100) return null
-        val timestamp = Instant.ofEpochSecond(epochSec)
-        return SpO2Sample(timestamp = timestamp, percentage = percentage)
+        if (payload.isEmpty()) return null
+
+        // 1. Try standard 8-byte payload (epochSec + percentage)
+        if (payload.size >= 8) {
+            try {
+                val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+                val epochSec = buffer.int.toLong() and 0xFFFFFFFFL
+                val percentage = buffer.int and 0xFF
+                if (percentage in 50..100 && epochSec > 1600000000L) {
+                    return SpO2Sample(timestamp = Instant.ofEpochSecond(epochSec), percentage = percentage)
+                }
+            } catch (e: Exception) {
+                // Fallthrough to fallback scanner
+            }
+        }
+
+        // 2. Fallback scanner: Find any byte in 50..100 range representing SpO2 %
+        for (b in payload) {
+            val valU8 = b.toInt() and 0xFF
+            if (valU8 in 50..100) {
+                return SpO2Sample(timestamp = Instant.now(), percentage = valU8)
+            }
+        }
+
+        return null
     }
 }

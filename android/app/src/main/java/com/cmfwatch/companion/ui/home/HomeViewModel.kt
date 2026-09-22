@@ -46,6 +46,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         // Load initial persistent snapshots & local telemetry history
         val cached = snapshotStore.load()
         val savedHR = telemetryStore.getHeartRateSamples()
+        val savedSteps = telemetryStore.getStepIntervals()
         val savedWorkouts = telemetryStore.getSavedWorkouts()
 
         val initialBpm = savedHR.lastOrNull()?.bpm ?: cached.latestHeartRate
@@ -54,6 +55,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             latestHeartRate = initialBpm,
             connectionState = bleManager.connectionState.value,
             hrSamplesToday = savedHR,
+            stepIntervalsToday = savedSteps,
             workoutsToday = savedWorkouts
         )
 
@@ -102,6 +104,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             bleManager.stepFlow.collect { step ->
                 telemetryStore.saveStepInterval(step)
+                val allSteps = telemetryStore.getStepIntervals()
                 val newSteps = (_uiState.value.todaySteps ?: 0) + step.steps
                 val newDist = (_uiState.value.todayDistanceKm ?: 0.0f) + (step.distanceMeters / 1000.0f)
                 val newKcal = (_uiState.value.todayCaloriesKcal ?: 0) + step.caloriesKcal.toInt()
@@ -110,6 +113,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     todaySteps = newSteps,
                     todayDistanceKm = newDist,
                     todayCaloriesKcal = newKcal,
+                    stepIntervalsToday = allSteps,
                     lastSyncedAt = Instant.now()
                 )
                 _uiState.value = updated

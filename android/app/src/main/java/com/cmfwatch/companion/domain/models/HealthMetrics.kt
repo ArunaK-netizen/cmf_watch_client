@@ -1,5 +1,6 @@
 package com.cmfwatch.companion.domain.models
 
+import com.cmfwatch.companion.storage.SavedWorkout
 import java.time.Instant
 
 enum class DeviceConnectionState {
@@ -70,6 +71,7 @@ data class SpO2Sample(
 data class DashboardSummary(
     val latestHeartRate: Int?,
     val restingHeartRate: Int?,
+    val latestSpO2: Int?,
     val todaySteps: Int?,
     val todayDistanceKm: Float?,
     val todayCaloriesKcal: Int?,
@@ -78,5 +80,7 @@ data class DashboardSummary(
     val deviceBatteryLevel: Int?,
     val connectionState: DeviceConnectionState,
     val lastSyncedAt: Instant?,
-    val discoveredDevices: List<DiscoveredDevice> = emptyList()
+    val discoveredDevices: List<DiscoveredDevice> = emptyList(),
+    val hrSamplesToday: List<HeartRateSample> = emptyList(),
+    val workoutsToday: List<SavedWorkout> = emptyList()
 )

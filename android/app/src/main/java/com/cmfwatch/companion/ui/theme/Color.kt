@@ -2,22 +2,49 @@ package com.cmfwatch.companion.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// OLED Pitch Dark Palette (Nothing Style)
-val BlackBackground = Color(0xFF000000)
-val DarkCardSurface = Color(0xFF121212)
-val DarkCardVariant = Color(0xFF1C1C1E)
-val TextPrimary = Color(0xFFFFFFFF)
-val TextSecondary = Color(0xFF8E8E93)
-val DividerColor = Color(0xFF2C2C2E)
+// Refined Light Theme Palette (Matching Reference UI media_1790060429285.png)
+val LightBackground = Color(0xFFF6F8FA)
+val SurfaceWhite = Color(0xFFFFFFFF)
+val SurfaceCard = Color(0xFFFFFFFF)
+val SurfaceCardAlt = Color(0xFFF8F9FA)
 
-// Feature Accents
-val AccentRed = Color(0xFFFF2800)          // Nothing Red Accent
-val AccentHeartRate = Color(0xFFFF3B30)    // Pulse Red
-val AccentActivity = Color(0xFF30D158)     // Vitality Green
-val AccentSleepDeep = Color(0xFF4A3E85)     // Indigo / Deep Purple
-val AccentSleepLight = Color(0xFF5B7FFF)    // Soft Blue
-val AccentSleepREM = Color(0xFF8E5AFF)      // Electric Violet
-val AccentSleepAwake = Color(0xFFFF9500)    // Amber
-val AccentStressLow = Color(0xFF34C759)     // Mint
-val AccentStressHigh = Color(0xFFFF355E)    // High Stress Coral
-val AccentSpO2 = Color(0xFF00C7BE)          // Cyan
+val TextPrimary = Color(0xFF1C1C1E)
+val TextSecondary = Color(0xFF8E8E93)
+val TextMuted = Color(0xFFAEB2B8)
+val DividerColor = Color(0xFFE5E5EA)
+
+// Activity Progress Ring Colors
+val RingGreen = Color(0xFF34C759)
+val RingGreenBg = Color(0xFFE8F9ED)
+val RingOrange = Color(0xFFFF9500)
+val RingOrangeBg = Color(0xFFFFF3E0)
+val RingBlue = Color(0xFF007AFF)
+val RingBlueBg = Color(0xFFE8F1FF)
+
+// Vitals & Health Category Colors
+val HeartRateRed = Color(0xFFFF3B30)
+val HeartRateBg = Color(0xFFFFEBEA)
+val SleepPurple = Color(0xFFAF52DE)
+val SleepPurpleBg = Color(0xFFF3E8FC)
+val SleepDeep = Color(0xFF5E5CE6)
+val SleepCore = Color(0xFF98989D)
+val SleepREM = Color(0xFFBF5AF2)
+
+// More Health Data Accents
+val SpO2Red = Color(0xFFFF453A)
+val RespBlue = Color(0xFF64D2FF)
+val StressGreen = Color(0xFF30D158)
+
+// Backward Compatibility Color Aliases
+val BlackBackground = LightBackground
+val DarkCardSurface = SurfaceWhite
+val DarkCardVariant = SurfaceCardAlt
+val AccentRed = RingGreen
+val AccentActivity = RingGreen
+val AccentStressLow = StressGreen
+val AccentSpO2 = RespBlue
+val AccentSleepREM = SleepREM
+val AccentSleepLight = SleepCore
+val AccentSleepDeep = SleepDeep
+val AccentHeartRate = HeartRateRed
+val AccentSleepAwake = RingOrange

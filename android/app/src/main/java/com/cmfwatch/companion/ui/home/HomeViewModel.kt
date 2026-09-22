@@ -6,7 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.cmfwatch.companion.ble.CmfBleManager
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.domain.models.DeviceConnectionState
-import com.cmfwatch.companion.domain.models.DiscoveredDevice
+import com.cmfwatch.companion.storage.HealthSnapshotStore
+import com.cmfwatch.companion.storage.LocalTelemetryStore
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,12 +17,15 @@ import java.time.Instant
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val snapshotStore = HealthSnapshotStore(application.applicationContext)
+    private val telemetryStore = LocalTelemetryStore(application.applicationContext)
     private val bleManager = CmfBleManager(application.applicationContext)
 
     private val _uiState = MutableStateFlow(
         DashboardSummary(
             latestHeartRate = null,
             restingHeartRate = null,
+            latestSpO2 = null,
             todaySteps = null,
             todayDistanceKm = null,
             todayCaloriesKcal = null,
@@ -29,13 +34,28 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             deviceBatteryLevel = null,
             connectionState = DeviceConnectionState.IDLE,
             lastSyncedAt = null,
-            discoveredDevices = emptyList()
+            discoveredDevices = emptyList(),
+            hrSamplesToday = emptyList(),
+            workoutsToday = emptyList()
         )
     )
     val uiState: StateFlow<DashboardSummary> = _uiState.asStateFlow()
 
     init {
-        // Observe Connection State
+        // Load initial persistent snapshots & local telemetry history
+        val cached = snapshotStore.load()
+        val savedHR = telemetryStore.getHeartRateSamples()
+        val savedWorkouts = telemetryStore.getSavedWorkouts()
+
+        val initialBpm = savedHR.lastOrNull()?.bpm ?: cached.latestHeartRate
+
+        _uiState.value = cached.copy(
+            latestHeartRate = initialBpm,
+            hrSamplesToday = savedHR,
+            workoutsToday = savedWorkouts
+        )
+
+        // Observe Connection State & Auto-save MAC
         viewModelScope.launch {
             bleManager.connectionState.collect { state ->
                 _uiState.value = _uiState.value.copy(connectionState = state)
@@ -53,33 +73,65 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             bleManager.batteryState.collect { battery ->
                 if (battery != null) {
-                    _uiState.value = _uiState.value.copy(deviceBatteryLevel = battery.level)
+                    val updated = _uiState.value.copy(deviceBatteryLevel = battery.level)
+                    _uiState.value = updated
+                    snapshotStore.save(updated)
                 }
             }
         }
 
-        // Observe Live Heart Rate Samples
+        // Observe Live Heart Rate Telemetry
         viewModelScope.launch {
-            bleManager.heartRateFlow.collect { hr ->
-                _uiState.value = _uiState.value.copy(
-                    latestHeartRate = hr.bpm,
+            bleManager.heartRateFlow.collect { sample ->
+                telemetryStore.saveHeartRateSample(sample)
+                val allHR = telemetryStore.getHeartRateSamples()
+
+                val updated = _uiState.value.copy(
+                    latestHeartRate = sample.bpm,
+                    hrSamplesToday = allHR,
                     lastSyncedAt = Instant.now()
                 )
+                _uiState.value = updated
+                snapshotStore.save(updated)
             }
         }
 
         // Observe Step Intervals
         viewModelScope.launch {
             bleManager.stepFlow.collect { step ->
+                telemetryStore.saveStepInterval(step)
                 val newSteps = (_uiState.value.todaySteps ?: 0) + step.steps
                 val newDist = (_uiState.value.todayDistanceKm ?: 0.0f) + (step.distanceMeters / 1000.0f)
                 val newKcal = (_uiState.value.todayCaloriesKcal ?: 0) + step.caloriesKcal.toInt()
 
-                _uiState.value = _uiState.value.copy(
+                val updated = _uiState.value.copy(
                     todaySteps = newSteps,
                     todayDistanceKm = newDist,
-                    todayCaloriesKcal = newKcal
+                    todayCaloriesKcal = newKcal,
+                    lastSyncedAt = Instant.now()
                 )
+                _uiState.value = updated
+                snapshotStore.save(updated)
+            }
+        }
+
+        // Auto-reconnect to preferred saved watch on app launch
+        snapshotStore.preferredDeviceAddress()?.let { mac ->
+            connectToWatch(mac)
+        }
+
+        // Periodic background sampling timer (every 5 minutes)
+        startPeriodicSamplingTimer()
+    }
+
+    private fun startPeriodicSamplingTimer() {
+        viewModelScope.launch {
+            while (true) {
+                delay(300_000) // 5 minutes
+                if (_uiState.value.connectionState == DeviceConnectionState.CONNECTED_PAIRED) {
+                    bleManager.fetchBattery()
+                    bleManager.triggerSync()
+                }
             }
         }
     }
@@ -93,6 +145,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun connectToWatch(macAddress: String) {
+        snapshotStore.savePreferredDevice(macAddress)
         bleManager.connect(macAddress)
     }
 

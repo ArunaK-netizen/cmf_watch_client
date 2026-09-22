@@ -2,7 +2,16 @@ package com.cmfwatch.companion.ui.device
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,13 +21,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.domain.models.DeviceConnectionState
 import com.cmfwatch.companion.domain.models.DiscoveredDevice
-import com.cmfwatch.companion.ui.components.MetricCard
 import com.cmfwatch.companion.ui.components.StatusPill
 import com.cmfwatch.companion.ui.theme.*
 
@@ -32,86 +41,56 @@ fun DeviceScreen(
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .background(BlackBackground)
-            .padding(horizontal = 20.dp),
-        contentPadding = PaddingValues(top = 24.dp, bottom = 100.dp)
+        modifier = modifier.fillMaxSize().background(BlackBackground),
+        contentPadding = PaddingValues(start = 24.dp, top = 28.dp, end = 24.dp, bottom = 112.dp)
     ) {
         item {
-            Text(
-                text = "HARDWARE & BLE DISCOVERY",
-                fontFamily = NType82FontFamily,
-                fontSize = 12.sp,
-                color = TextSecondary,
-                letterSpacing = 1.5.sp
-            )
-            Text(
-                text = "Device",
-                fontFamily = NType82FontFamily,
-                fontSize = 32.sp,
-                color = TextPrimary
-            )
-            Spacer(modifier = Modifier.height(24.dp))
+            Text("WATCH", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary, letterSpacing = 1.2.sp)
+            Spacer(Modifier.height(6.dp))
+            Text("Device", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Spacer(Modifier.height(28.dp))
         }
 
-        // Active Connection Header
         item {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(DarkCardSurface)
-                    .padding(20.dp)
+                modifier = Modifier.fillMaxWidth().background(DarkCardSurface, RoundedCornerShape(18.dp)).padding(20.dp)
             ) {
                 Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "CMF Watch",
-                            fontFamily = NType82FontFamily,
-                            fontSize = 20.sp,
-                            color = TextPrimary
-                        )
-                        StatusPill(
-                            state = summary.connectionState,
-                            batteryLevel = summary.deviceBatteryLevel
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    if (summary.connectionState == DeviceConnectionState.CONNECTED_PAIRED) {
-                        Button(
-                            onClick = onSyncNow,
-                            colors = ButtonDefaults.buttonColors(containerColor = AccentRed),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column {
+                            Text("CMF Watch Pro 2", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                            Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "SYNC TELEMETRY NOW",
-                                fontFamily = NType82FontFamily,
-                                fontSize = 13.sp,
-                                color = TextPrimary,
-                                letterSpacing = 1.sp
+                                if (summary.connectionState == DeviceConnectionState.CONNECTED_PAIRED) "Connected" else "Searching for your watch",
+                                fontSize = 14.sp,
+                                color = TextSecondary
                             )
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                        StatusPill(summary.connectionState, summary.deviceBatteryLevel)
+                    }
+                    Spacer(Modifier.height(20.dp))
+                    if (summary.connectionState == DeviceConnectionState.CONNECTED_PAIRED || summary.connectionState == DeviceConnectionState.SYNCING) {
+                        Text(
+                            if (summary.connectionState == DeviceConnectionState.SYNCING) "Updating your health data" else "Connected. Sync runs automatically.",
+                            fontSize = 15.sp,
+                            color = TextSecondary
+                        )
+                        Spacer(Modifier.height(14.dp))
                         Button(
-                            onClick = onDisconnectDevice,
+                            onClick = onSyncNow,
                             colors = ButtonDefaults.buttonColors(containerColor = DarkCardVariant),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                text = "DISCONNECT WATCH",
-                                fontFamily = NType82FontFamily,
-                                fontSize = 13.sp,
-                                color = TextSecondary,
-                                letterSpacing = 1.sp
-                            )
+                            Text("Refresh now", fontSize = 14.sp, color = TextPrimary)
+                        }
+                        Button(
+                            onClick = onDisconnectDevice,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Disconnect", fontSize = 14.sp, color = TextSecondary)
                         }
                     } else {
                         Button(
@@ -121,133 +100,42 @@ fun DeviceScreen(
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            val scanBtnText = if (summary.connectionState == DeviceConnectionState.SCANNING) {
-                                "SCANNING FOR WATCHES..."
-                            } else {
-                                "SCAN FOR NEARBY CMF WATCHES"
-                            }
                             Text(
-                                text = scanBtnText,
-                                fontFamily = NType82FontFamily,
-                                fontSize = 13.sp,
-                                color = TextPrimary,
-                                letterSpacing = 1.sp
+                                if (summary.connectionState == DeviceConnectionState.SCANNING) "Searching..." else "Find a different watch",
+                                fontSize = 14.sp,
+                                color = TextPrimary
                             )
                         }
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(Modifier.height(28.dp))
         }
 
-        // Discovered Peripherals Section
         if (summary.discoveredDevices.isNotEmpty()) {
             item {
-                Text(
-                    text = "DISCOVERED PERIPHERALS (${summary.discoveredDevices.size})",
-                    fontFamily = NType82FontFamily,
-                    fontSize = 12.sp,
-                    color = TextSecondary,
-                    letterSpacing = 1.5.sp
-                )
-                Spacer(modifier = Modifier.height(12.dp))
+                Text("NEARBY WATCHES", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextSecondary, letterSpacing = 1.2.sp)
+                Spacer(Modifier.height(12.dp))
             }
-
             items(summary.discoveredDevices) { device ->
-                DiscoveredDeviceCard(
-                    device = device,
-                    onConnect = { onConnectDevice(device.address) }
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+                DiscoveredDeviceRow(device, { onConnectDevice(device.address) })
+                Spacer(Modifier.height(8.dp))
             }
-
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-        } else if (summary.connectionState == DeviceConnectionState.SCANNING) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(DarkCardSurface)
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Searching for advertising CMF Watch peripherals...",
-                        fontFamily = NType82FontFamily,
-                        fontSize = 13.sp,
-                        color = TextSecondary
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-        }
-
-        item {
-            val batteryText = summary.deviceBatteryLevel?.let { "$it%" } ?: "--"
-            val batterySubtitle = if (summary.deviceBatteryLevel != null) "Hardware AFE & BLE Radio Active" else "Battery telemetry unavailable"
-
-            MetricCard(
-                title = "Battery Telemetry",
-                value = batteryText,
-                unit = "State",
-                subtitle = batterySubtitle,
-                accentColor = AccentActivity
-            )
         }
     }
 }
 
 @Composable
-fun DiscoveredDeviceCard(
-    device: DiscoveredDevice,
-    onConnect: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(DarkCardSurface)
-            .clickable { onConnect() }
-            .padding(16.dp)
+private fun DiscoveredDeviceRow(device: DiscoveredDevice, onConnect: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onConnect).padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = device.name,
-                    fontFamily = NType82FontFamily,
-                    fontSize = 16.sp,
-                    color = TextPrimary
-                )
-                Text(
-                    text = "MAC: ${device.address}  •  RSSI: ${device.rssi} dBm",
-                    fontFamily = NType82FontFamily,
-                    fontSize = 11.sp,
-                    color = TextSecondary
-                )
-            }
-
-            Button(
-                onClick = onConnect,
-                colors = ButtonDefaults.buttonColors(containerColor = AccentActivity),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = "CONNECT",
-                    fontFamily = NType82FontFamily,
-                    fontSize = 11.sp,
-                    color = TextPrimary
-                )
-            }
+        Column(Modifier.weight(1f)) {
+            Text(device.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+            Spacer(Modifier.height(3.dp))
+            Text("Nearby  •  ${device.rssi} dBm", fontSize = 13.sp, color = TextSecondary)
         }
+        Text("Connect", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AccentRed)
     }
 }

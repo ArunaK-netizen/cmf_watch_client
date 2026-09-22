@@ -2,30 +2,36 @@ package com.cmfwatch.companion.ui.navigation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.ui.activity.ActivityScreen
 import com.cmfwatch.companion.ui.device.DeviceScreen
-import com.cmfwatch.companion.ui.health.HealthScreen
-import com.cmfwatch.companion.ui.history.HistoryScreen
 import com.cmfwatch.companion.ui.home.HomeScreen
 import com.cmfwatch.companion.ui.sleep.SleepScreen
+import com.cmfwatch.companion.ui.vitals.HeartRateDetailScreen
 import com.cmfwatch.companion.ui.theme.*
 
-enum class NavDestination(val label: String) {
-    HOME("HOME"),
-    HEALTH("HEALTH"),
-    ACTIVITY("ACTIVITY"),
-    SLEEP("SLEEP"),
-    DEVICE("DEVICE")
+enum class NavDestination(val label: String, val icon: ImageVector) {
+    HOME("Home", Icons.Default.Home),
+    ACTIVITY("Activity", Icons.Default.BarChart),
+    DEVICES("Devices", Icons.Default.Watch),
+    PROFILE("Profile", Icons.Default.Person)
 }
 
 @Composable
@@ -38,38 +44,45 @@ fun AppNavigationShell(
     modifier: Modifier = Modifier
 ) {
     var currentDestination by remember { mutableStateOf(NavDestination.HOME) }
+    var isViewingHeartRateDetail by remember { mutableStateOf(false) }
 
-    Box(modifier = modifier.fillMaxSize().background(BlackBackground)) {
-        // Main Screen Content
-        when (currentDestination) {
-            NavDestination.HOME -> HomeScreen(summary = summary)
-            NavDestination.HEALTH -> HealthScreen(
-                latestBpm = summary.latestHeartRate,
-                restingBpm = summary.restingHeartRate,
-                latestStress = summary.latestStressScore,
-                latestSpO2 = null
+    Box(modifier = modifier.fillMaxSize().background(LightBackground)) {
+        if (isViewingHeartRateDetail) {
+            HeartRateDetailScreen(
+                allSamples = summary.hrSamplesToday,
+                onBackClick = { isViewingHeartRateDetail = false }
             )
-            NavDestination.ACTIVITY -> ActivityScreen(
-                steps = summary.todaySteps,
-                distanceKm = summary.todayDistanceKm,
-                caloriesKcal = summary.todayCaloriesKcal
-            )
-            NavDestination.SLEEP -> SleepScreen(session = null)
-            NavDestination.DEVICE -> DeviceScreen(
-                summary = summary,
-                onStartScan = onStartScan,
-                onConnectDevice = onConnectDevice,
-                onDisconnectDevice = onDisconnectDevice,
-                onSyncNow = onSyncNow
+        } else {
+            // Main Screen Content
+            when (currentDestination) {
+                NavDestination.HOME -> HomeScreen(
+                    summary = summary,
+                    onHeartRateClick = { isViewingHeartRateDetail = true }
+                )
+                NavDestination.ACTIVITY -> ActivityScreen(
+                    steps = summary.todaySteps,
+                    distanceKm = summary.todayDistanceKm,
+                    caloriesKcal = summary.todayCaloriesKcal
+                )
+                NavDestination.DEVICES -> DeviceScreen(
+                    summary = summary,
+                    onStartScan = onStartScan,
+                    onConnectDevice = onConnectDevice,
+                    onDisconnectDevice = onDisconnectDevice,
+                    onSyncNow = onSyncNow
+                )
+                NavDestination.PROFILE -> SleepScreen(session = null)
+            }
+
+            // Integrated Bottom Navigation Bar (White surface, zero gray rectangle ripple)
+            BottomNavigationBar(
+                currentDestination = currentDestination,
+                onDestinationSelected = { currentDestination = it },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
             )
         }
-
-        // Bottom Navigation Bar
-        BottomNavigationBar(
-            currentDestination = currentDestination,
-            onDestinationSelected = { currentDestination = it },
-            modifier = Modifier.align(Alignment.BottomCenter)
-        )
     }
 }
 
@@ -82,10 +95,9 @@ fun BottomNavigationBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(16.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(DarkCardSurface)
-            .padding(vertical = 12.dp, horizontal = 16.dp)
+            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+            .background(SurfaceWhite)
+            .padding(vertical = 10.dp, horizontal = 16.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -94,31 +106,35 @@ fun BottomNavigationBar(
         ) {
             NavDestination.values().forEach { destination ->
                 val selected = destination == currentDestination
-                val textColor = if (selected) AccentRed else TextSecondary
+                val iconTint = if (selected) TextPrimary else TextSecondary
+                val textColor = if (selected) TextPrimary else TextSecondary
+                val interactionSource = remember { MutableInteractionSource() }
 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .clickable { onDestinationSelected(destination) }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = null
+                        ) { onDestinationSelected(destination) }
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
                 ) {
-                    Text(
-                        text = destination.label,
-                        fontFamily = NType82FontFamily,
-                        fontSize = 11.sp,
-                        color = textColor,
-                        letterSpacing = 1.sp
+                    Icon(
+                        imageVector = destination.icon,
+                        contentDescription = destination.label,
+                        tint = iconTint,
+                        modifier = Modifier.size(24.dp)
                     )
 
-                    if (selected) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(4.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(AccentRed)
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = destination.label,
+                        fontFamily = AppFontFamily,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        fontSize = 11.sp,
+                        color = textColor
+                    )
                 }
             }
         }

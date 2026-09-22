@@ -14,6 +14,7 @@ class DataTruthUnitTest {
         val summary = DashboardSummary(
             latestHeartRate = null,
             restingHeartRate = null,
+            latestSpO2 = null,
             todaySteps = null,
             todayDistanceKm = null,
             todayCaloriesKcal = null,
@@ -39,6 +40,7 @@ class DataTruthUnitTest {
         val initial = DashboardSummary(
             latestHeartRate = null,
             restingHeartRate = null,
+            latestSpO2 = null,
             todaySteps = null,
             todayDistanceKm = null,
             todayCaloriesKcal = null,

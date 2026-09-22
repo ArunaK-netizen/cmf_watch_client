@@ -26,6 +26,17 @@ object CryptoEngine {
     )
 
     /**
+     * Generate cryptographically secure random bytes.
+     */
+    fun generateRandomBytes(length: Int): ByteArray {
+        require(length >= 0) { "Random byte length must be non-negative" }
+        val random = java.security.SecureRandom()
+        val bytes = ByteArray(length)
+        random.nextBytes(bytes)
+        return bytes
+    }
+
+    /**
      * Calculate 32-bit CRC32 checksum returned as 4 Little-Endian bytes.
      */
     fun calculateCrc32Bytes(data: ByteArray, offset: Int = 0, length: Int = data.size): ByteArray {

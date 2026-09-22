@@ -134,17 +134,30 @@ class FrameAssembler {
         val chunkIndex = buffer.short.toInt() and 0xFFFF
         val cmd2 = buffer.short.toInt() and 0xFFFF
 
-        val rawChunkData = ByteArray(payloadLen)
-        if (buffer.remaining() < payloadLen) return null
-        buffer.get(rawChunkData)
+        val isPlaintext = sessionKey == null || isPlaintextOpcode(cmd1, cmd2)
+        val availablePayloadLength = buffer.remaining()
+        if (availablePayloadLength < payloadLen && !isPlaintext) return null
 
-        val isPlaintext = sessionKey == null
+        // Plaintext watch notifications omit the trailing CRC bytes even though
+        // the frame length field still includes them.
+        val actualPayloadLength = if (isPlaintext) {
+            minOf(payloadLen, availablePayloadLength)
+        } else {
+            payloadLen
+        }
+        val rawChunkData = ByteArray(actualPayloadLength)
+        buffer.get(rawChunkData)
 
         val payload = if (payloadLen > 0) {
             if (isPlaintext) {
                 rawChunkData
             } else {
-                val decrypted = CryptoEngine.decryptAes128Cbc(rawChunkData, sessionKey!!)
+                if (rawChunkData.isEmpty() || rawChunkData.size % 16 != 0) return null
+                val decrypted = try {
+                    CryptoEngine.decryptAes128Cbc(rawChunkData, sessionKey!!)
+                } catch (_: Exception) {
+                    return null
+                }
                 if (decrypted.size < 4) return null
                 val body = decrypted.copyOfRange(0, decrypted.size - 4)
                 val expectedCrc = decrypted.copyOfRange(decrypted.size - 4, decrypted.size)
@@ -177,5 +190,9 @@ class FrameAssembler {
         }
 
         return null
+    }
+
+    private fun isPlaintextOpcode(cmd1: Int, cmd2: Int): Boolean {
+        return cmd1 == 0xFFFF && cmd2 == 0x0048
     }
 }

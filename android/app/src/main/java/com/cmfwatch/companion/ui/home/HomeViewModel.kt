@@ -140,7 +140,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private fun startPeriodicSamplingTimer() {
         viewModelScope.launch {
             while (true) {
-                delay(300_000) // 5 minutes
+                delay(30_000) // 30 seconds fast auto-sync
                 if (_uiState.value.connectionState == DeviceConnectionState.CONNECTED_PAIRED) {
                     bleManager.fetchBattery()
                     bleManager.triggerSync()

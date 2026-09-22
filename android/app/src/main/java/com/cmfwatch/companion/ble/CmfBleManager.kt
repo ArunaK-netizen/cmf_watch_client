@@ -626,13 +626,15 @@ class CmfBleManager(
             cmd1 == 0xFFFF && cmd2 == 0x0004 -> {
                 Log.i(TAG, "Received AUTHENTICATED_CONFIRM_REPLY (0xFFFF 0x0004). Authentication COMPLETE!")
                 _connectionState.value = DeviceConnectionState.CONNECTED_PAIRED
-                        managerScope.launch {
-                            setDeviceTime()
-                            delay(500)
-                            fetchBattery()
-                            delay(1500)
-                            triggerSync()
-                        }
+                managerScope.launch {
+                    setDeviceTime()
+                    delay(500)
+                    fetchBattery()
+                    delay(500)
+                    enableRealtimeStream()
+                    delay(1000)
+                    triggerSync()
+                }
             }
 
             // BATTERY_REPLY (0x005C 0x0001)
@@ -703,6 +705,17 @@ class CmfBleManager(
 
     fun fetchBattery() {
         sendFrame(0x005C, 0x0002, byteArrayOf(0xA5.toByte()), useEncryption = true)
+    }
+
+    fun enableRealtimeStream() {
+        managerScope.launch {
+            Log.i(TAG, "Enabling live realtime telemetry push stream from watch...")
+            sendFrame(0x0053, 0x8001, byteArrayOf(0x01), useEncryption = true)
+            delay(300)
+            sendFrame(0x0056, 0x8001, byteArrayOf(0x01), useEncryption = true)
+            delay(300)
+            sendFrame(0x0055, 0x8001, byteArrayOf(0x01), useEncryption = true)
+        }
     }
 
     fun triggerSync() {

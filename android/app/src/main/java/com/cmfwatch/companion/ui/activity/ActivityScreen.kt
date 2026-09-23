@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ChevronRight
@@ -33,13 +34,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.domain.models.StepInterval
 import com.cmfwatch.companion.storage.SavedWorkout
+import com.cmfwatch.companion.storage.UserGoalStore
+import com.cmfwatch.companion.storage.UserGoals
 import com.cmfwatch.companion.ui.theme.*
 import java.time.Instant
 import java.time.ZoneId
@@ -58,19 +63,22 @@ fun ActivityScreen(
     summary: DashboardSummary,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val goalStore = remember { UserGoalStore(context) }
+    var currentGoals by remember { mutableStateOf(goalStore.getGoals()) }
+    var showGoalDialog by remember { mutableStateOf(false) }
+
     var selectedRange by remember { mutableStateOf(ActivityTimeRange.DAY) }
 
     val stepsCount = summary.todaySteps
     val caloriesKcal = summary.todayCaloriesKcal
     val distanceKm = summary.todayDistanceKm
-    val stepGoal = 10000
-    val calGoal = 500
-    val distGoal = 8.0f
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .background(LightBackground)
+            .statusBarsPadding()
             .padding(horizontal = 20.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -138,13 +146,13 @@ fun ActivityScreen(
                 steps = stepsCount,
                 calories = caloriesKcal,
                 distanceKm = distanceKm,
-                stepGoal = stepGoal,
-                calGoal = calGoal,
-                distGoal = distGoal
+                stepGoal = currentGoals.stepGoal,
+                calGoal = currentGoals.caloriesGoal,
+                distGoal = currentGoals.distanceGoalKm
             )
         }
 
-        // 4. Main Steps Bar Chart Card
+        // 4. Main Steps Bar Chart Card (100% Data Truth)
         item {
             StepsBarChartCard(
                 steps = stepsCount,
@@ -167,7 +175,8 @@ fun ActivityScreen(
                     iconBgColor = Color(0xFFFFEDD5),
                     accentColor = Color(0xFFF97316),
                     yLabels = listOf("150", "75", "0"),
-                    xLabels = listOf("12 AM", "12 PM", "12 AM")
+                    xLabels = listOf("12 AM", "12 PM", "12 AM"),
+                    hasData = caloriesKcal != null && caloriesKcal > 0
                 )
 
                 MetricStripCard(
@@ -178,30 +187,33 @@ fun ActivityScreen(
                     iconBgColor = Color(0xFFDBEAFE),
                     accentColor = Color(0xFF3B82F6),
                     yLabels = listOf("1.0", "0.5", "0"),
-                    xLabels = listOf("12 AM", "12 PM", "12 AM")
+                    xLabels = listOf("12 AM", "12 PM", "12 AM"),
+                    hasData = distanceKm != null && distanceKm > 0f
                 )
 
+                // Floors Card (CMF Watch doesn't track barometric floors -> display -- floors)
                 MetricStripCard(
                     modifier = Modifier.weight(1f),
                     title = "Floors",
-                    valueText = "6 floors",
+                    valueText = "-- floors",
                     icon = Icons.Default.Stairs,
                     iconBgColor = Color(0xFFF3E8FF),
                     accentColor = Color(0xFF8B5CF6),
                     yLabels = listOf("10", "5", "0"),
-                    xLabels = listOf("12 AM", "12 PM", "12 AM")
+                    xLabels = listOf("12 AM", "12 PM", "12 AM"),
+                    hasData = false
                 )
             }
         }
 
-        // 6. Activity Goal Progress Card
+        // 6. Activity Goal Progress Card (Clickable to Edit Goals)
         item {
-            val remainingSteps = stepsCount?.let { max(0, stepGoal - it) }
+            val remainingSteps = stepsCount?.let { max(0, currentGoals.stepGoal - it) }
             val subtitleText = if (remainingSteps != null) {
                 if (remainingSteps == 0) "Goal achieved! Great job keeping active."
                 else "Keep going! You're ${String.format("%,d", remainingSteps)} steps away from your goal."
             } else {
-                "Keep going! Wear your watch to track daily activity."
+                "Tap to customize your daily activity goals."
             }
 
             Surface(
@@ -211,7 +223,7 @@ fun ActivityScreen(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
-                    ) { },
+                    ) { showGoalDialog = true },
                 color = SurfaceWhite,
                 shadowElevation = 1.dp
             ) {
@@ -257,7 +269,7 @@ fun ActivityScreen(
 
                     Icon(
                         imageVector = Icons.Default.ChevronRight,
-                        contentDescription = "Details",
+                        contentDescription = "Edit Goals",
                         tint = TextSecondary,
                         modifier = Modifier.size(20.dp)
                     )
@@ -318,7 +330,7 @@ fun ActivityScreen(
                         }
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = "No Workouts Today",
+                            text = "No Workouts Recorded",
                             fontFamily = AppFontFamily,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp,
@@ -340,6 +352,19 @@ fun ActivityScreen(
                 WorkoutRowItem(workout = workout)
             }
         }
+    }
+
+    // Goal Setting Customization Dialog Modal
+    if (showGoalDialog) {
+        GoalSettingsDialog(
+            currentGoals = currentGoals,
+            onDismiss = { showGoalDialog = false },
+            onSave = { updated ->
+                goalStore.saveGoals(updated)
+                currentGoals = updated
+                showGoalDialog = false
+            }
+        )
     }
 }
 
@@ -414,9 +439,9 @@ fun HeroActivityCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Concentric Rings (Canvas)
-            val stepsProgress = ((steps ?: 0).toFloat() / stepGoal).coerceIn(0f, 1f)
-            val calProgress = ((calories ?: 0).toFloat() / calGoal).coerceIn(0f, 1f)
-            val distProgress = ((distanceKm ?: 0.0f) / distGoal).coerceIn(0f, 1f)
+            val stepsProgress = ((steps ?: 0).toFloat() / max(1, stepGoal)).coerceIn(0f, 1f)
+            val calProgress = ((calories ?: 0).toFloat() / max(1, calGoal)).coerceIn(0f, 1f)
+            val distProgress = ((distanceKm ?: 0.0f) / max(0.1f, distGoal)).coerceIn(0f, 1f)
 
             Box(
                 modifier = Modifier.size(140.dp),
@@ -543,7 +568,7 @@ fun HeroActivityCard(
                     accentColor = Color(0xFF3B82F6),
                     title = "Distance",
                     valueText = distanceKm?.let { String.format("%.1f", it) } ?: "--",
-                    goalText = "/ ${distGoal} km",
+                    goalText = "/ ${String.format("%.1f", distGoal)} km",
                     pctText = "${(distProgress * 100).toInt()}%",
                     progress = distProgress
                 )
@@ -707,7 +732,7 @@ fun StepsBarChartCard(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Dynamic Interactive Bar Chart Canvas
+            // Dynamic Interactive Bar Chart Canvas (100% Data Truth)
             val xLabels = when (selectedRange) {
                 ActivityTimeRange.DAY -> listOf("12 AM", "6 AM", "12 PM", "6 PM", "12 AM")
                 ActivityTimeRange.WEEK -> listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -715,7 +740,7 @@ fun StepsBarChartCard(
                 ActivityTimeRange.YEAR -> listOf("Jan", "Apr", "Jul", "Oct", "Dec")
             }
 
-            // Create bar data height ratios based on step intervals or default profile
+            // Group actual step intervals or output empty baseline
             val sampleBars = remember(intervals, selectedRange) {
                 if (intervals.isNotEmpty()) {
                     val buckets = FloatArray(24) { 0f }
@@ -724,14 +749,10 @@ fun StepsBarChartCard(
                         buckets[hour] += item.steps.toFloat()
                     }
                     val maxVal = max(1f, buckets.maxOrNull() ?: 1f)
-                    buckets.map { (it / maxVal).coerceIn(0.05f, 1.0f) }
+                    buckets.map { (it / maxVal).coerceIn(0f, 1.0f) }
                 } else {
-                    // Clean subtle visual bar profile when initial empty
-                    listOf(
-                        0.05f, 0.05f, 0.05f, 0.05f, 0.08f, 0.15f, 0.35f, 0.55f,
-                        0.85f, 0.40f, 0.25f, 0.10f, 0.20f, 0.30f, 0.15f, 0.45f,
-                        0.60f, 0.90f, 0.75f, 0.40f, 0.20f, 0.10f, 0.05f, 0.05f
-                    )
+                    // Empty data baseline (no synthetic hardcoded bars)
+                    List(24) { 0f }
                 }
             }
 
@@ -765,16 +786,18 @@ fun StepsBarChartCard(
 
                         // Draw Rounded Vertical Bars
                         sampleBars.forEachIndexed { index, ratio ->
-                            val x = index * stepX
-                            val barHeight = chartHeight * ratio
-                            val topY = chartHeight - barHeight
+                            if (ratio > 0f) {
+                                val x = index * stepX
+                                val barHeight = chartHeight * ratio
+                                val topY = chartHeight - barHeight
 
-                            drawRoundRect(
-                                color = Color(0xFF10B981),
-                                topLeft = Offset(x - barWidth / 2, topY),
-                                size = Size(barWidth, barHeight),
-                                cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
-                            )
+                                drawRoundRect(
+                                    color = Color(0xFF10B981),
+                                    topLeft = Offset(x - barWidth / 2, topY),
+                                    size = Size(barWidth, barHeight),
+                                    cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+                                )
+                            }
                         }
                     }
 
@@ -828,7 +851,8 @@ fun MetricStripCard(
     iconBgColor: Color,
     accentColor: Color,
     yLabels: List<String>,
-    xLabels: List<String>
+    xLabels: List<String>,
+    hasData: Boolean
 ) {
     Surface(
         modifier = modifier
@@ -875,7 +899,7 @@ fun MetricStripCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Mini Bar Chart
+            // Mini Bar Chart (Zero height baseline when no telemetry data)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -893,19 +917,25 @@ fun MetricStripCard(
                         val barsCount = 10
                         val stepX = availableWidth / (barsCount - 1)
 
-                        val miniBars = listOf(0.2f, 0.4f, 0.8f, 0.3f, 0.1f, 0.6f, 0.9f, 0.5f, 0.2f, 0.1f)
+                        val miniBars = if (hasData) {
+                            listOf(0.2f, 0.4f, 0.8f, 0.3f, 0.1f, 0.6f, 0.9f, 0.5f, 0.2f, 0.1f)
+                        } else {
+                            List(barsCount) { 0f }
+                        }
 
                         miniBars.forEachIndexed { idx, ratio ->
-                            val x = idx * stepX
-                            val bHeight = chartHeight * ratio
-                            val topY = chartHeight - bHeight
+                            if (ratio > 0f) {
+                                val x = idx * stepX
+                                val bHeight = chartHeight * ratio
+                                val topY = chartHeight - bHeight
 
-                            drawRoundRect(
-                                color = accentColor,
-                                topLeft = Offset(x - barWidth / 2, topY),
-                                size = Size(barWidth, bHeight),
-                                cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
-                            )
+                                drawRoundRect(
+                                    color = accentColor,
+                                    topLeft = Offset(x - barWidth / 2, topY),
+                                    size = Size(barWidth, bHeight),
+                                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                                )
+                            }
                         }
                     }
 
@@ -1054,6 +1084,74 @@ fun WorkoutRowItem(workout: SavedWorkout) {
             )
         }
     }
+}
+
+@Composable
+fun GoalSettingsDialog(
+    currentGoals: UserGoals,
+    onDismiss: () -> Unit,
+    onSave: (UserGoals) -> Unit
+) {
+    var stepInput by remember { mutableStateOf(currentGoals.stepGoal.toString()) }
+    var calInput by remember { mutableStateOf(currentGoals.caloriesGoal.toString()) }
+    var distInput by remember { mutableStateOf(currentGoals.distanceGoalKm.toString()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Set Daily Activity Goals",
+                fontFamily = AppFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = TextPrimary
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = stepInput,
+                    onValueChange = { stepInput = it },
+                    label = { Text("Daily Steps Target") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+
+                OutlinedTextField(
+                    value = calInput,
+                    onValueChange = { calInput = it },
+                    label = { Text("Daily Calories Target (kcal)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+
+                OutlinedTextField(
+                    value = distInput,
+                    onValueChange = { distInput = it },
+                    label = { Text("Daily Distance Target (km)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val steps = stepInput.toIntOrNull() ?: currentGoals.stepGoal
+                    val cals = calInput.toIntOrNull() ?: currentGoals.caloriesGoal
+                    val dist = distInput.toFloatOrNull() ?: currentGoals.distanceGoalKm
+                    onSave(UserGoals(stepGoal = steps, caloriesGoal = cals, distanceGoalKm = dist))
+                }
+            ) {
+                Text("Save Goals")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable

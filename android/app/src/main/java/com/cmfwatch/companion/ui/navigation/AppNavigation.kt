@@ -57,6 +57,8 @@ fun AppNavigationShell(
             when (currentDestination) {
                 NavDestination.HOME -> HomeScreen(
                     summary = summary,
+                    onActivityClick = { currentDestination = NavDestination.ACTIVITY },
+                    onSleepClick = { currentDestination = NavDestination.PROFILE },
                     onHeartRateClick = { isViewingHeartRateDetail = true },
                     onWatchCardClick = { currentDestination = NavDestination.DEVICES }
                 )

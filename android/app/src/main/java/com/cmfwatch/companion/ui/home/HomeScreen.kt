@@ -215,7 +215,7 @@ fun HomeScreen(
                                     var angle = startAngleRad
                                     val stepAngle = Math.PI / 90.0
                                     while (angle <= endAngleRad) {
-                                        val wave = sin(angle * 10).toFloat() * 2.5dp.toPx()
+                                        val wave = sin(angle * 10).toFloat() * 2.5.dp.toPx()
                                         val r = radius1 + wave
                                         val x = center.x + r * cos(angle).toFloat()
                                         val y = center.y + r * sin(angle).toFloat()

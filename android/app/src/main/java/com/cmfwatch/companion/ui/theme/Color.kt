@@ -2,43 +2,44 @@ package com.cmfwatch.companion.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Refined Light Theme Palette (Matching Reference UI media_1790060429285.png)
-val LightBackground = Color(0xFFF6F8FA)
-val SurfaceWhite = Color(0xFFFFFFFF)
-val SurfaceCard = Color(0xFFFFFFFF)
-val SurfaceCardAlt = Color(0xFFF8F9FA)
+// Premium Dark OLED Theme Palette
+val LightBackground = Color(0xFF090A0F) // Pitch OLED Dark Background
+val BlackBackground = Color(0xFF090A0F)
 
-val TextPrimary = Color(0xFF1C1C1E)
-val TextSecondary = Color(0xFF8E8E93)
-val TextMuted = Color(0xFFAEB2B8)
-val DividerColor = Color(0xFFE5E5EA)
+val SurfaceWhite = Color(0xFF14151D)    // Dark Glassmorphic Card Surface
+val SurfaceCard = Color(0xFF14151D)
+val SurfaceCardAlt = Color(0xFF1C1D27)
+val DarkCardSurface = Color(0xFF14151D)
+val DarkCardVariant = Color(0xFF1C1D27)
 
-// Activity Progress Ring Colors
-val RingGreen = Color(0xFF34C759)
-val RingGreenBg = Color(0xFFE8F9ED)
-val RingOrange = Color(0xFFFF9500)
-val RingOrangeBg = Color(0xFFFFF3E0)
-val RingBlue = Color(0xFF007AFF)
-val RingBlueBg = Color(0xFFE8F1FF)
+val TextPrimary = Color(0xFFFFFFFF)     // Pure Crisp White
+val TextSecondary = Color(0xFF9CA3AF)   // Muted Cool Gray
+val TextMuted = Color(0xFF6B7280)       // Dark Muted Gray
+val DividerColor = Color(0xFF262736)
+
+// Activity Progress Ring Neon Accents
+val RingGreen = Color(0xFF00E676)       // Glowing Neon Emerald
+val RingGreenBg = Color(0xFF073820)
+val RingOrange = Color(0xFFFF6D00)      // Glowing Sunset Orange
+val RingOrangeBg = Color(0xFF3B1808)
+val RingBlue = Color(0xFF00B0FF)        // Glowing Electric Blue
+val RingBlueBg = Color(0xFF07243B)
 
 // Vitals & Health Category Colors
-val HeartRateRed = Color(0xFFFF3B30)
-val HeartRateBg = Color(0xFFFFEBEA)
-val SleepPurple = Color(0xFFAF52DE)
-val SleepPurpleBg = Color(0xFFF3E8FC)
-val SleepDeep = Color(0xFF5E5CE6)
-val SleepCore = Color(0xFF98989D)
-val SleepREM = Color(0xFFBF5AF2)
+val HeartRateRed = Color(0xFFFF2D55)    // Glowing Crimson
+val HeartRateBg = Color(0xFF3B0B16)
+val SleepPurple = Color(0xFFA855F7)     // Neon Violet
+val SleepPurpleBg = Color(0xFF250C3B)
+val SleepDeep = Color(0xFF6366F1)
+val SleepCore = Color(0xFF94A3B8)
+val SleepREM = Color(0xFFC084FC)
 
-// More Health Data Accents
-val SpO2Red = Color(0xFFFF453A)
-val RespBlue = Color(0xFF64D2FF)
-val StressGreen = Color(0xFF30D158)
+// Health Data Accents
+val SpO2Red = Color(0xFF38BDF8)         // Ocean Azure
+val RespBlue = Color(0xFF38BDF8)
+val StressGreen = Color(0xFF34D399)
 
-// Backward Compatibility Color Aliases
-val BlackBackground = LightBackground
-val DarkCardSurface = SurfaceWhite
-val DarkCardVariant = SurfaceCardAlt
+// Aliases
 val AccentRed = RingGreen
 val AccentActivity = RingGreen
 val AccentStressLow = StressGreen

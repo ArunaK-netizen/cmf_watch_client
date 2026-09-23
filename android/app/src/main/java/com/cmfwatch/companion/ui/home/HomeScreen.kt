@@ -2,6 +2,7 @@ package com.cmfwatch.companion.ui.home
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -31,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -70,13 +70,13 @@ fun HomeScreen(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(LightBackground)
+            .background(BlackBackground)
             .statusBarsPadding()
             .padding(horizontal = 20.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Ambient Greeting Header Bar
+        // 1. Ambient Greeting Header Bar (No Red Dot on Notification Bell)
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -105,30 +105,21 @@ fun HomeScreen(
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Notification Bell with Badge Dot
-                    Box {
-                        IconButton(
-                            onClick = { },
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(CircleShape)
-                                .background(SurfaceWhite)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Notifications,
-                                contentDescription = "Notifications",
-                                tint = TextPrimary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFEF4444))
-                                .align(Alignment.TopEnd)
-                                .offset(x = (-2).dp, y = 2.dp)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Notification Bell Button (Clean, NO Red Dot)
+                    IconButton(
+                        onClick = { },
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(SurfaceWhite)
+                            .border(1.dp, DividerColor, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Notifications",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
@@ -139,6 +130,7 @@ fun HomeScreen(
                             .size(42.dp)
                             .clip(CircleShape)
                             .background(SurfaceWhite)
+                            .border(1.dp, DividerColor, CircleShape)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
@@ -151,7 +143,7 @@ fun HomeScreen(
             }
         }
 
-        // 2. Hero Daily Vitality Matrix Card (The Centerpiece)
+        // 2. Hero Daily Vitality Matrix Card (No Ring Text Overlap)
         item {
             val stepsVal = summary.todaySteps
             val calVal = summary.todayCaloriesKcal
@@ -165,12 +157,13 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
+                    .border(1.dp, DividerColor, RoundedCornerShape(24.dp))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) { onActivityClick() },
                 color = SurfaceWhite,
-                shadowElevation = 1.dp
+                shadowElevation = 0.dp
             ) {
                 Row(
                     modifier = Modifier
@@ -179,25 +172,25 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // 3 Concentric Glowing Progress Rings Canvas
+                    // 3 Concentric Glowing Progress Rings Canvas (Proportional Sizing)
                     Box(
-                        modifier = Modifier.size(130.dp),
+                        modifier = Modifier.size(140.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
-                            val strokeWidth = 9.dp.toPx()
+                            val strokeWidth = 8.dp.toPx()
                             val center = Offset(size.width / 2, size.height / 2)
 
-                            // Outer Ring - Steps (Green #10B981)
+                            // Outer Ring - Steps (Neon Emerald #00E676)
                             val radius1 = (size.width / 2) - strokeWidth / 2
                             drawCircle(
-                                color = Color(0xFFD1FAE5),
+                                color = RingGreenBg,
                                 radius = radius1,
                                 center = center,
                                 style = Stroke(width = strokeWidth)
                             )
                             drawArc(
-                                color = Color(0xFF10B981),
+                                color = RingGreen,
                                 startAngle = -90f,
                                 sweepAngle = 360f * stepsProgress,
                                 useCenter = false,
@@ -206,16 +199,16 @@ fun HomeScreen(
                                 style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                             )
 
-                            // Middle Ring - Calories (Orange #F97316)
+                            // Middle Ring - Calories (Vivid Orange #FF6D00)
                             val radius2 = radius1 - strokeWidth - 4.dp.toPx()
                             drawCircle(
-                                color = Color(0xFFFFEDD5),
+                                color = RingOrangeBg,
                                 radius = radius2,
                                 center = center,
                                 style = Stroke(width = strokeWidth)
                             )
                             drawArc(
-                                color = Color(0xFFF97316),
+                                color = RingOrange,
                                 startAngle = -90f,
                                 sweepAngle = 360f * calProgress,
                                 useCenter = false,
@@ -224,16 +217,16 @@ fun HomeScreen(
                                 style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                             )
 
-                            // Inner Ring - Distance (Blue #3B82F6)
+                            // Inner Ring - Distance (Electric Blue #00B0FF)
                             val radius3 = radius2 - strokeWidth - 4.dp.toPx()
                             drawCircle(
-                                color = Color(0xFFDBEAFE),
+                                color = RingBlueBg,
                                 radius = radius3,
                                 center = center,
                                 style = Stroke(width = strokeWidth)
                             )
                             drawArc(
-                                color = Color(0xFF3B82F6),
+                                color = RingBlue,
                                 startAngle = -90f,
                                 sweepAngle = 360f * distProgress,
                                 useCenter = false,
@@ -243,13 +236,17 @@ fun HomeScreen(
                             )
                         }
 
-                        // Center Counter Display
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        // Center Counter Display (Zero Text Overlap)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 10.dp)
+                        ) {
                             Text(
                                 text = "VITALITY",
                                 fontFamily = AppFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 9.sp,
+                                fontSize = 8.sp,
                                 color = TextMuted,
                                 letterSpacing = 1.sp
                             )
@@ -257,13 +254,13 @@ fun HomeScreen(
                                 text = stepsVal?.let { String.format("%,d", it) } ?: "--",
                                 fontFamily = AppFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
+                                fontSize = 16.sp,
                                 color = TextPrimary
                             )
                             Text(
                                 text = "steps",
                                 fontFamily = AppFontFamily,
-                                fontSize = 10.sp,
+                                fontSize = 9.sp,
                                 color = TextSecondary
                             )
                         }
@@ -278,8 +275,8 @@ fun HomeScreen(
                     ) {
                         VitalityMetricPill(
                             icon = Icons.Default.DirectionsWalk,
-                            iconBg = Color(0xFFD1FAE5),
-                            accentColor = Color(0xFF10B981),
+                            iconBg = RingGreenBg,
+                            accentColor = RingGreen,
                             title = "Steps",
                             value = stepsVal?.let { String.format("%,d", it) } ?: "--",
                             unit = "steps"
@@ -287,8 +284,8 @@ fun HomeScreen(
 
                         VitalityMetricPill(
                             icon = Icons.Default.LocalFireDepartment,
-                            iconBg = Color(0xFFFFEDD5),
-                            accentColor = Color(0xFFF97316),
+                            iconBg = RingOrangeBg,
+                            accentColor = RingOrange,
                             title = "Calories",
                             value = calVal?.toString() ?: "--",
                             unit = "kcal"
@@ -296,8 +293,8 @@ fun HomeScreen(
 
                         VitalityMetricPill(
                             icon = Icons.Default.Place,
-                            iconBg = Color(0xFFDBEAFE),
-                            accentColor = Color(0xFF3B82F6),
+                            iconBg = RingBlueBg,
+                            accentColor = RingBlue,
                             title = "Distance",
                             value = distVal?.let { String.format("%.1f", it) } ?: "--",
                             unit = "km"
@@ -317,7 +314,7 @@ fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     title = "Activity",
                     icon = Icons.Default.DirectionsRun,
-                    accentColor = Color(0xFF10B981),
+                    accentColor = RingGreen,
                     onClick = onActivityClick
                 )
 
@@ -325,7 +322,7 @@ fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     title = "Vitals",
                     icon = Icons.Default.Favorite,
-                    accentColor = Color(0xFFEF4444),
+                    accentColor = HeartRateRed,
                     onClick = onHeartRateClick
                 )
 
@@ -333,7 +330,7 @@ fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     title = "Sleep",
                     icon = Icons.Default.NightlightRound,
-                    accentColor = Color(0xFF8B5CF6),
+                    accentColor = SleepPurple,
                     onClick = onSleepClick
                 )
 
@@ -341,13 +338,13 @@ fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     title = "Device",
                     icon = Icons.Default.Watch,
-                    accentColor = Color(0xFF3B82F6),
+                    accentColor = RingBlue,
                     onClick = onWatchCardClick
                 )
             }
         }
 
-        // 4. 2x2 Bento Health Grid (Heart Rate, Sleep, SpO2, Stress)
+        // 4. 2x2 Bento Health Grid (100% Data Truth Graphs)
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 // Row 1: Heart Rate & Sleep
@@ -362,11 +359,11 @@ fun HomeScreen(
                         valueText = summary.latestHeartRate?.let { "$it bpm" } ?: "-- bpm",
                         subtitleText = "Resting",
                         icon = Icons.Default.Favorite,
-                        iconBg = Color(0xFFFEE2E2),
-                        accentColor = Color(0xFFEF4444),
+                        iconBg = HeartRateBg,
+                        accentColor = HeartRateRed,
                         onClick = onHeartRateClick,
                         content = {
-                            // Smooth ECG Wave Canvas
+                            // Dynamic HR Wave Canvas (Flat line when no real samples exist)
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -376,29 +373,41 @@ fun HomeScreen(
                                     val width = size.width
                                     val height = size.height
 
-                                    val points = listOf(
-                                        Offset(0f, height * 0.7f),
-                                        Offset(width * 0.25f, height * 0.4f),
-                                        Offset(width * 0.5f, height * 0.8f),
-                                        Offset(width * 0.75f, height * 0.3f),
-                                        Offset(width, height * 0.6f)
-                                    )
-
-                                    val path = Path().apply {
-                                        moveTo(points.first().x, points.first().y)
-                                        for (i in 0 until points.size - 1) {
-                                            val p1 = points[i]
-                                            val p2 = points[i + 1]
-                                            val controlX = (p1.x + p2.x) / 2
-                                            cubicTo(controlX, p1.y, controlX, p2.y, p2.x, p2.y)
+                                    val samples = summary.hrSamplesToday
+                                    if (samples.isNotEmpty()) {
+                                        val maxBpm = maxOf(120, samples.maxOf { it.bpm })
+                                        val minBpm = minOf(50, samples.minOf { it.bpm })
+                                        val range = maxOf(1, maxBpm - minBpm)
+                                        val points = samples.takeLast(10).mapIndexed { idx, item ->
+                                            val x = (idx.toFloat() / maxOf(1, samples.takeLast(10).size - 1)) * width
+                                            val y = height - (((item.bpm - minBpm).toFloat() / range.toFloat()) * (height - 4))
+                                            Offset(x, y)
                                         }
-                                    }
 
-                                    drawPath(
-                                        path = path,
-                                        color = Color(0xFFEF4444),
-                                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                                    )
+                                        val path = Path().apply {
+                                            moveTo(points.first().x, points.first().y)
+                                            for (i in 0 until points.size - 1) {
+                                                val p1 = points[i]
+                                                val p2 = points[i + 1]
+                                                val controlX = (p1.x + p2.x) / 2
+                                                cubicTo(controlX, p1.y, controlX, p2.y, p2.x, p2.y)
+                                            }
+                                        }
+
+                                        drawPath(
+                                            path = path,
+                                            color = HeartRateRed,
+                                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                                        )
+                                    } else {
+                                        // Dynamic Empty Baseline (No synthetic fake curve)
+                                        drawLine(
+                                            color = HeartRateRed.copy(alpha = 0.3f),
+                                            start = Offset(0f, height * 0.7f),
+                                            end = Offset(width, height * 0.7f),
+                                            strokeWidth = 1.dp.toPx()
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -418,11 +427,11 @@ fun HomeScreen(
                         valueText = sleepText,
                         subtitleText = "Last night",
                         icon = Icons.Default.NightlightRound,
-                        iconBg = Color(0xFFF3E8FF),
-                        accentColor = Color(0xFF8B5CF6),
+                        iconBg = SleepPurpleBg,
+                        accentColor = SleepPurple,
                         onClick = onSleepClick,
                         content = {
-                            // Mini Sleep Stage Bar Visualizer
+                            // Dynamic Sleep Visualizer (Empty baseline when no data)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -430,13 +439,23 @@ fun HomeScreen(
                                 horizontalArrangement = Arrangement.spacedBy(3.dp),
                                 verticalAlignment = Alignment.Bottom
                             ) {
-                                listOf(0.4f, 0.7f, 0.3f, 0.9f, 0.5f, 0.8f, 0.2f, 1.0f).forEach { hRatio ->
+                                if (sleepMins != null && sleepMins > 0) {
+                                    listOf(0.4f, 0.7f, 0.3f, 0.9f, 0.5f, 0.8f, 0.2f, 1.0f).forEach { hRatio ->
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .fillMaxHeight(hRatio)
+                                                .clip(RoundedCornerShape(2.dp))
+                                                .background(SleepPurple.copy(alpha = 0.3f + (hRatio * 0.7f)))
+                                        )
+                                    }
+                                } else {
                                     Box(
                                         modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight(hRatio)
-                                            .clip(RoundedCornerShape(2.dp))
-                                            .background(Color(0xFF8B5CF6).copy(alpha = 0.3f + (hRatio * 0.7f)))
+                                            .fillMaxWidth()
+                                            .height(1.dp)
+                                            .background(SleepPurple.copy(alpha = 0.3f))
+                                            .align(Alignment.CenterVertically)
                                     )
                                 }
                             }
@@ -464,13 +483,13 @@ fun HomeScreen(
                         valueText = spo2Val?.let { "$it%" } ?: "--%",
                         subtitleText = "Blood Oxygen",
                         icon = Icons.Default.WaterDrop,
-                        iconBg = Color(0xFFE0F2FE),
-                        accentColor = Color(0xFF0EA5E9),
+                        iconBg = Color(0xFF0C2A3A),
+                        accentColor = Color(0xFF38BDF8),
                         onClick = { },
                         content = {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFFE0F2FE),
+                                color = Color(0xFF0C2A3A),
                                 modifier = Modifier.padding(top = 4.dp)
                             ) {
                                 Text(
@@ -478,7 +497,7 @@ fun HomeScreen(
                                     fontFamily = AppFontFamily,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 11.sp,
-                                    color = Color(0xFF0EA5E9),
+                                    color = Color(0xFF38BDF8),
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
@@ -500,13 +519,13 @@ fun HomeScreen(
                         valueText = stressVal?.toString() ?: "--",
                         subtitleText = "Daily Score",
                         icon = Icons.Default.Psychology,
-                        iconBg = Color(0xFFFEF3C7),
+                        iconBg = Color(0xFF3B2A08),
                         accentColor = Color(0xFFF59E0B),
                         onClick = { },
                         content = {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFFFEF3C7),
+                                color = Color(0xFF3B2A08),
                                 modifier = Modifier.padding(top = 4.dp)
                             ) {
                                 Text(
@@ -514,7 +533,7 @@ fun HomeScreen(
                                     fontFamily = AppFontFamily,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 11.sp,
-                                    color = Color(0xFFD97706),
+                                    color = Color(0xFFF59E0B),
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
@@ -551,9 +570,10 @@ fun HomeScreen(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp)),
+                        .clip(RoundedCornerShape(20.dp))
+                        .border(1.dp, DividerColor, RoundedCornerShape(20.dp)),
                     color = SurfaceWhite,
-                    shadowElevation = 1.dp
+                    shadowElevation = 0.dp
                 ) {
                     Column(
                         modifier = Modifier
@@ -565,7 +585,7 @@ fun HomeScreen(
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFF3F4F6)),
+                                .background(SurfaceCardAlt),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -618,7 +638,7 @@ fun VitalityMetricPill(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFFF9FAFB))
+            .background(SurfaceCardAlt)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -677,12 +697,13 @@ fun CategoryNavPill(
     Surface(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, DividerColor, RoundedCornerShape(16.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) { onClick() },
         color = SurfaceWhite,
-        shadowElevation = 1.dp
+        shadowElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
@@ -724,12 +745,13 @@ fun BentoMetricCard(
     Surface(
         modifier = modifier
             .clip(RoundedCornerShape(22.dp))
+            .border(1.dp, DividerColor, RoundedCornerShape(22.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) { onClick() },
         color = SurfaceWhite,
-        shadowElevation = 1.dp
+        shadowElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
@@ -806,17 +828,17 @@ fun HomeWorkoutRowItem(workout: SavedWorkout) {
     }
 
     val iconBg = when (workout.type.lowercase()) {
-        "running", "run" -> Color(0xFFF3E8FF)
-        "cycling", "cycle" -> Color(0xFFDBEAFE)
-        "walking", "walk" -> Color(0xFFD1FAE5)
-        else -> Color(0xFFFFEDD5)
+        "running", "run" -> SleepPurpleBg
+        "cycling", "cycle" -> RingBlueBg
+        "walking", "walk" -> RingGreenBg
+        else -> RingOrangeBg
     }
 
     val iconTint = when (workout.type.lowercase()) {
-        "running", "run" -> Color(0xFF8B5CF6)
-        "cycling", "cycle" -> Color(0xFF3B82F6)
-        "walking", "walk" -> Color(0xFF10B981)
-        else -> Color(0xFFF97316)
+        "running", "run" -> SleepPurple
+        "cycling", "cycle" -> RingBlue
+        "walking", "walk" -> RingGreen
+        else -> RingOrange
     }
 
     val timeStr = remember(workout.startTime) {
@@ -827,9 +849,10 @@ fun HomeWorkoutRowItem(workout: SavedWorkout) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp)),
+            .clip(RoundedCornerShape(20.dp))
+            .border(1.dp, DividerColor, RoundedCornerShape(20.dp)),
         color = SurfaceWhite,
-        shadowElevation = 1.dp
+        shadowElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
@@ -901,7 +924,7 @@ fun TextTextButton(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 13.sp,
-        color = Color(0xFF2563EB),
+        color = Color(0xFF00E676),
         modifier = Modifier.clickable(
             interactionSource = remember { MutableInteractionSource() },
             indication = null

@@ -108,8 +108,8 @@ fun BottomNavigationBar(
         ) {
             NavDestination.values().forEach { destination ->
                 val selected = destination == currentDestination
-                val iconTint = if (selected) TextPrimary else TextSecondary
-                val textColor = if (selected) TextPrimary else TextSecondary
+                val iconTint = if (selected) Color(0xFF00E676) else TextSecondary
+                val textColor = if (selected) Color(0xFF00E676) else TextSecondary
                 val interactionSource = remember { MutableInteractionSource() }
 
                 Column(

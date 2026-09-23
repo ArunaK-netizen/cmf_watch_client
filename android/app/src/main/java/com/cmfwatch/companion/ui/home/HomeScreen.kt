@@ -30,6 +30,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -46,6 +47,14 @@ import com.cmfwatch.companion.ui.theme.*
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.sin
+
+// Material 3 Expressive Asymmetric Corner Shapes
+val AsymmetricShapeStart = RoundedCornerShape(topStart = 28.dp, topEnd = 10.dp, bottomStart = 10.dp, bottomEnd = 28.dp)
+val AsymmetricShapeEnd = RoundedCornerShape(topStart = 10.dp, topEnd = 28.dp, bottomStart = 28.dp, bottomEnd = 10.dp)
 
 @Composable
 fun HomeScreen(
@@ -74,9 +83,9 @@ fun HomeScreen(
             .statusBarsPadding()
             .padding(horizontal = 20.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        // 1. Ambient Greeting Header Bar (No Red Dot on Notification Bell)
+        // 1. Expressive Ambient Greeting Header Bar (No Red Dot)
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -143,7 +152,7 @@ fun HomeScreen(
             }
         }
 
-        // 2. Hero Daily Vitality Matrix Card (No Ring Text Overlap)
+        // 2. Hero Material 3 Expressive Wavy Arc Step Ring & Odometer Display Card
         item {
             val stepsVal = summary.todaySteps
             val calVal = summary.todayCaloriesKcal
@@ -153,11 +162,13 @@ fun HomeScreen(
             val calProgress = ((calVal ?: 0).toFloat() / 500f).coerceIn(0f, 1f)
             val distProgress = ((distVal ?: 0.0f) / 8.0f).coerceIn(0f, 1f)
 
+            val pct = (stepsProgress * 100).toInt()
+
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .border(1.dp, DividerColor, RoundedCornerShape(24.dp))
+                    .clip(AsymmetricShapeStart)
+                    .border(1.dp, DividerColor, AsymmetricShapeStart)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
@@ -165,137 +176,177 @@ fun HomeScreen(
                 color = SurfaceWhite,
                 shadowElevation = 0.dp
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(22.dp)
                 ) {
-                    // 3 Concentric Glowing Progress Rings Canvas (Proportional Sizing)
-                    Box(
-                        modifier = Modifier.size(140.dp),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val strokeWidth = 8.dp.toPx()
-                            val center = Offset(size.width / 2, size.height / 2)
+                        // Stride-style Expressive Wavy Arc Canvas
+                        Box(
+                            modifier = Modifier.size(150.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val strokeWidth = 9.dp.toPx()
+                                val center = Offset(size.width / 2, size.height / 2)
 
-                            // Outer Ring - Steps (Neon Emerald #00E676)
-                            val radius1 = (size.width / 2) - strokeWidth / 2
-                            drawCircle(
-                                color = RingGreenBg,
-                                radius = radius1,
-                                center = center,
-                                style = Stroke(width = strokeWidth)
-                            )
-                            drawArc(
-                                color = RingGreen,
-                                startAngle = -90f,
-                                sweepAngle = 360f * stepsProgress,
-                                useCenter = false,
-                                topLeft = Offset(center.x - radius1, center.y - radius1),
-                                size = Size(radius1 * 2, radius1 * 2),
-                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                            )
+                                // Outer Wavy Ring - Steps (Neon Emerald #00E676)
+                                val radius1 = (size.width / 2) - strokeWidth / 2
+                                drawCircle(
+                                    color = RingGreenBg,
+                                    radius = radius1,
+                                    center = center,
+                                    style = Stroke(width = strokeWidth)
+                                )
 
-                            // Middle Ring - Calories (Vivid Orange #FF6D00)
-                            val radius2 = radius1 - strokeWidth - 4.dp.toPx()
-                            drawCircle(
-                                color = RingOrangeBg,
-                                radius = radius2,
-                                center = center,
-                                style = Stroke(width = strokeWidth)
-                            )
-                            drawArc(
-                                color = RingOrange,
-                                startAngle = -90f,
-                                sweepAngle = 360f * calProgress,
-                                useCenter = false,
-                                topLeft = Offset(center.x - radius2, center.y - radius2),
-                                size = Size(radius2 * 2, radius2 * 2),
-                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                            )
+                                // Expressive Fluid Wavy Step Arc Path
+                                if (stepsProgress > 0f) {
+                                    val sweepAngle = 360f * stepsProgress
+                                    val path = Path()
+                                    val startAngleRad = -Math.PI / 2
+                                    val endAngleRad = startAngleRad + (sweepAngle * (Math.PI / 180.0))
 
-                            // Inner Ring - Distance (Electric Blue #00B0FF)
-                            val radius3 = radius2 - strokeWidth - 4.dp.toPx()
-                            drawCircle(
-                                color = RingBlueBg,
-                                radius = radius3,
-                                center = center,
-                                style = Stroke(width = strokeWidth)
-                            )
-                            drawArc(
-                                color = RingBlue,
-                                startAngle = -90f,
-                                sweepAngle = 360f * distProgress,
-                                useCenter = false,
-                                topLeft = Offset(center.x - radius3, center.y - radius3),
-                                size = Size(radius3 * 2, radius3 * 2),
-                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                            )
+                                    var first = true
+                                    var angle = startAngleRad
+                                    val stepAngle = Math.PI / 90.0
+                                    while (angle <= endAngleRad) {
+                                        val wave = sin(angle * 10).toFloat() * 2.5dp.toPx()
+                                        val r = radius1 + wave
+                                        val x = center.x + r * cos(angle).toFloat()
+                                        val y = center.y + r * sin(angle).toFloat()
+
+                                        if (first) {
+                                            path.moveTo(x, y)
+                                            first = false
+                                        } else {
+                                            path.lineTo(x, y)
+                                        }
+                                        angle += stepAngle
+                                    }
+
+                                    drawPath(
+                                        path = path,
+                                        color = RingGreen,
+                                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                                    )
+                                }
+
+                                // Middle Ring - Calories (Vivid Orange #FF6D00)
+                                val radius2 = radius1 - strokeWidth - 5.dp.toPx()
+                                drawCircle(
+                                    color = RingOrangeBg,
+                                    radius = radius2,
+                                    center = center,
+                                    style = Stroke(width = strokeWidth)
+                                )
+                                drawArc(
+                                    color = RingOrange,
+                                    startAngle = -90f,
+                                    sweepAngle = 360f * calProgress,
+                                    useCenter = false,
+                                    topLeft = Offset(center.x - radius2, center.y - radius2),
+                                    size = Size(radius2 * 2, radius2 * 2),
+                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                                )
+
+                                // Inner Ring - Distance (Electric Blue #00B0FF)
+                                val radius3 = radius2 - strokeWidth - 5.dp.toPx()
+                                drawCircle(
+                                    color = RingBlueBg,
+                                    radius = radius3,
+                                    center = center,
+                                    style = Stroke(width = strokeWidth)
+                                )
+                                drawArc(
+                                    color = RingBlue,
+                                    startAngle = -90f,
+                                    sweepAngle = 360f * distProgress,
+                                    useCenter = false,
+                                    topLeft = Offset(center.x - radius3, center.y - radius3),
+                                    size = Size(radius3 * 2, radius3 * 2),
+                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                                )
+                            }
                         }
 
-                        // Center Counter Display (Zero Text Overlap)
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        // Expressive 52sp Odometer Display Number & Progress Badge
                         Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(horizontal = 10.dp)
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.Center
                         ) {
-                            Text(
-                                text = "VITALITY",
-                                fontFamily = AppFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 8.sp,
-                                color = TextMuted,
-                                letterSpacing = 1.sp
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = RingGreenBg,
+                                modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                            ) {
+                                Text(
+                                    text = if (stepsVal != null) "$pct% of 10,000 steps" else "No step data",
+                                    fontFamily = AppFontFamily,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 10.sp,
+                                    color = RingGreen,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
                             Text(
                                 text = stepsVal?.let { String.format("%,d", it) } ?: "--",
                                 fontFamily = AppFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
+                                fontSize = 38.sp,
                                 color = TextPrimary
                             )
+
                             Text(
-                                text = "steps",
+                                text = "DAILY STEPS",
                                 fontFamily = AppFontFamily,
-                                fontSize = 9.sp,
-                                color = TextSecondary
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                color = TextMuted,
+                                letterSpacing = 1.2.sp
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.height(18.dp))
 
-                    // Integrated Metric Pill Stack
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    // Expressive Tonal Pill Row for Steps, Calories, Distance
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        VitalityMetricPill(
+                        ExpressiveMetricChip(
+                            modifier = Modifier.weight(1f),
                             icon = Icons.Default.DirectionsWalk,
                             iconBg = RingGreenBg,
                             accentColor = RingGreen,
-                            title = "Steps",
                             value = stepsVal?.let { String.format("%,d", it) } ?: "--",
                             unit = "steps"
                         )
 
-                        VitalityMetricPill(
+                        ExpressiveMetricChip(
+                            modifier = Modifier.weight(1f),
                             icon = Icons.Default.LocalFireDepartment,
                             iconBg = RingOrangeBg,
                             accentColor = RingOrange,
-                            title = "Calories",
                             value = calVal?.toString() ?: "--",
                             unit = "kcal"
                         )
 
-                        VitalityMetricPill(
+                        ExpressiveMetricChip(
+                            modifier = Modifier.weight(1f),
                             icon = Icons.Default.Place,
                             iconBg = RingBlueBg,
                             accentColor = RingBlue,
-                            title = "Distance",
                             value = distVal?.let { String.format("%.1f", it) } ?: "--",
                             unit = "km"
                         )
@@ -304,47 +355,51 @@ fun HomeScreen(
             }
         }
 
-        // 3. Category Quick Navigation Pill Strip
+        // 3. Material 3 Expressive AssistChips Navigation Strip
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                CategoryNavPill(
+                ExpressiveNavChip(
                     modifier = Modifier.weight(1f),
                     title = "Activity",
                     icon = Icons.Default.DirectionsRun,
                     accentColor = RingGreen,
+                    shape = AsymmetricShapeStart,
                     onClick = onActivityClick
                 )
 
-                CategoryNavPill(
+                ExpressiveNavChip(
                     modifier = Modifier.weight(1f),
                     title = "Vitals",
                     icon = Icons.Default.Favorite,
                     accentColor = HeartRateRed,
+                    shape = AsymmetricShapeEnd,
                     onClick = onHeartRateClick
                 )
 
-                CategoryNavPill(
+                ExpressiveNavChip(
                     modifier = Modifier.weight(1f),
                     title = "Sleep",
                     icon = Icons.Default.NightlightRound,
                     accentColor = SleepPurple,
+                    shape = AsymmetricShapeStart,
                     onClick = onSleepClick
                 )
 
-                CategoryNavPill(
+                ExpressiveNavChip(
                     modifier = Modifier.weight(1f),
                     title = "Device",
                     icon = Icons.Default.Watch,
                     accentColor = RingBlue,
+                    shape = AsymmetricShapeEnd,
                     onClick = onWatchCardClick
                 )
             }
         }
 
-        // 4. 2x2 Bento Health Grid (100% Data Truth Graphs)
+        // 4. Material 3 Expressive 2x2 Bento Grid with Asymmetric Corners
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 // Row 1: Heart Rate & Sleep
@@ -352,8 +407,8 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Heart Rate Bento Card
-                    BentoMetricCard(
+                    // Heart Rate Bento Card (AsymmetricShapeStart)
+                    ExpressiveBentoCard(
                         modifier = Modifier.weight(1f),
                         title = "Heart Rate",
                         valueText = summary.latestHeartRate?.let { "$it bpm" } ?: "-- bpm",
@@ -361,13 +416,13 @@ fun HomeScreen(
                         icon = Icons.Default.Favorite,
                         iconBg = HeartRateBg,
                         accentColor = HeartRateRed,
+                        shape = AsymmetricShapeStart,
                         onClick = onHeartRateClick,
                         content = {
-                            // Dynamic HR Wave Canvas (Flat line when no real samples exist)
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(32.dp)
+                                    .height(34.dp)
                             ) {
                                 Canvas(modifier = Modifier.fillMaxSize()) {
                                     val width = size.width
@@ -400,7 +455,6 @@ fun HomeScreen(
                                             style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
                                         )
                                     } else {
-                                        // Dynamic Empty Baseline (No synthetic fake curve)
                                         drawLine(
                                             color = HeartRateRed.copy(alpha = 0.3f),
                                             start = Offset(0f, height * 0.7f),
@@ -413,7 +467,7 @@ fun HomeScreen(
                         }
                     )
 
-                    // Sleep Bento Card
+                    // Sleep Bento Card (AsymmetricShapeEnd)
                     val sleepMins = summary.lastSleepMinutes
                     val sleepText = if (sleepMins != null) {
                         "${sleepMins / 60}h ${sleepMins % 60}m"
@@ -421,7 +475,7 @@ fun HomeScreen(
                         "--"
                     }
 
-                    BentoMetricCard(
+                    ExpressiveBentoCard(
                         modifier = Modifier.weight(1f),
                         title = "Sleep",
                         valueText = sleepText,
@@ -429,13 +483,13 @@ fun HomeScreen(
                         icon = Icons.Default.NightlightRound,
                         iconBg = SleepPurpleBg,
                         accentColor = SleepPurple,
+                        shape = AsymmetricShapeEnd,
                         onClick = onSleepClick,
                         content = {
-                            // Dynamic Sleep Visualizer (Empty baseline when no data)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(32.dp),
+                                    .height(34.dp),
                                 horizontalArrangement = Arrangement.spacedBy(3.dp),
                                 verticalAlignment = Alignment.Bottom
                             ) {
@@ -468,7 +522,7 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // SpO2 Bento Card
+                    // SpO2 Bento Card (AsymmetricShapeEnd)
                     val spo2Val = summary.latestSpO2
                     val spo2Status = when {
                         spo2Val == null -> "--"
@@ -477,7 +531,7 @@ fun HomeScreen(
                         else -> "Low"
                     }
 
-                    BentoMetricCard(
+                    ExpressiveBentoCard(
                         modifier = Modifier.weight(1f),
                         title = "SpO2",
                         valueText = spo2Val?.let { "$it%" } ?: "--%",
@@ -485,6 +539,7 @@ fun HomeScreen(
                         icon = Icons.Default.WaterDrop,
                         iconBg = Color(0xFF0C2A3A),
                         accentColor = Color(0xFF38BDF8),
+                        shape = AsymmetricShapeEnd,
                         onClick = { },
                         content = {
                             Surface(
@@ -504,7 +559,7 @@ fun HomeScreen(
                         }
                     )
 
-                    // Stress Bento Card
+                    // Stress Bento Card (AsymmetricShapeStart)
                     val stressVal = summary.latestStressScore
                     val stressStatus = when {
                         stressVal == null -> "--"
@@ -513,7 +568,7 @@ fun HomeScreen(
                         else -> "High"
                     }
 
-                    BentoMetricCard(
+                    ExpressiveBentoCard(
                         modifier = Modifier.weight(1f),
                         title = "Stress",
                         valueText = stressVal?.toString() ?: "--",
@@ -521,6 +576,7 @@ fun HomeScreen(
                         icon = Icons.Default.Psychology,
                         iconBg = Color(0xFF3B2A08),
                         accentColor = Color(0xFFF59E0B),
+                        shape = AsymmetricShapeStart,
                         onClick = { },
                         content = {
                             Surface(
@@ -543,7 +599,110 @@ fun HomeScreen(
             }
         }
 
-        // 5. Recent Workouts Section
+        // 5. 7-Day Activity Distribution Bar Chart Card
+        item {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .border(1.dp, DividerColor, RoundedCornerShape(24.dp)),
+                color = SurfaceWhite,
+                shadowElevation = 0.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp)
+                ) {
+                    Text(
+                        text = "Weekly Activity",
+                        fontFamily = AppFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "7-Day Step Breakdown",
+                        fontFamily = AppFontFamily,
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    val days = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+                    val weeklyIntervals = summary.stepIntervalsToday
+
+                    // Calculate height ratios or baseline
+                    val barRatios = remember(weeklyIntervals) {
+                        if (weeklyIntervals.isNotEmpty()) {
+                            val buckets = FloatArray(7) { 0f }
+                            weeklyIntervals.forEach { item ->
+                                val dayIndex = (item.timestamp.atZone(ZoneId.systemDefault()).dayOfWeek.value - 1) % 7
+                                buckets[dayIndex] += item.steps.toFloat()
+                            }
+                            val maxVal = max(1f, buckets.maxOrNull() ?: 1f)
+                            buckets.map { (it / maxVal).coerceIn(0f, 1.0f) }
+                        } else {
+                            List(7) { 0f }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(110.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        days.forEachIndexed { idx, day ->
+                            val ratio = barRatios.getOrElse(idx) { 0f }
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(16.dp)
+                                        .height(80.dp),
+                                    contentAlignment = Alignment.BottomCenter
+                                ) {
+                                    // Track
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(SurfaceCardAlt)
+                                    )
+                                    // Active Bar
+                                    if (ratio > 0f) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .fillMaxHeight(ratio)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(RingGreen)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = day,
+                                    fontFamily = AppFontFamily,
+                                    fontSize = 11.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. Recent Workouts Section
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -626,34 +785,33 @@ fun HomeScreen(
 // ==========================================
 
 @Composable
-fun VitalityMetricPill(
+fun ExpressiveMetricChip(
+    modifier: Modifier = Modifier,
     icon: ImageVector,
     iconBg: Color,
     accentColor: Color,
-    title: String,
     value: String,
     unit: String
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .background(SurfaceCardAlt)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(26.dp)
+                .size(28.dp)
                 .clip(CircleShape)
                 .background(iconBg),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
-                contentDescription = title,
+                contentDescription = null,
                 tint = accentColor,
-                modifier = Modifier.size(14.dp)
+                modifier = Modifier.size(15.dp)
             )
         }
 
@@ -661,43 +819,35 @@ fun VitalityMetricPill(
 
         Column {
             Text(
-                text = title,
+                text = value,
+                fontFamily = AppFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = TextPrimary
+            )
+            Text(
+                text = unit,
                 fontFamily = AppFontFamily,
                 fontSize = 10.sp,
                 color = TextSecondary
             )
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    text = value,
-                    fontFamily = AppFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = TextPrimary
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text(
-                    text = unit,
-                    fontFamily = AppFontFamily,
-                    fontSize = 10.sp,
-                    color = TextSecondary
-                )
-            }
         }
     }
 }
 
 @Composable
-fun CategoryNavPill(
+fun ExpressiveNavChip(
     modifier: Modifier = Modifier,
     title: String,
     icon: ImageVector,
     accentColor: Color,
+    shape: RoundedCornerShape,
     onClick: () -> Unit
 ) {
     Surface(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, DividerColor, RoundedCornerShape(16.dp))
+            .clip(shape)
+            .border(1.dp, DividerColor, shape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -708,7 +858,7 @@ fun CategoryNavPill(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp, horizontal = 8.dp),
+                .padding(vertical = 12.dp, horizontal = 6.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -731,7 +881,7 @@ fun CategoryNavPill(
 }
 
 @Composable
-fun BentoMetricCard(
+fun ExpressiveBentoCard(
     modifier: Modifier = Modifier,
     title: String,
     valueText: String,
@@ -739,13 +889,14 @@ fun BentoMetricCard(
     icon: ImageVector,
     iconBg: Color,
     accentColor: Color,
+    shape: RoundedCornerShape,
     onClick: () -> Unit,
     content: @Composable () -> Unit
 ) {
     Surface(
         modifier = modifier
-            .clip(RoundedCornerShape(22.dp))
-            .border(1.dp, DividerColor, RoundedCornerShape(22.dp))
+            .clip(shape)
+            .border(1.dp, DividerColor, shape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null

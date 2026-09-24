@@ -2,59 +2,84 @@ package com.cmfwatch.companion.ui.home
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.DirectionsRun
-import androidx.compose.material.icons.filled.DirectionsWalk
-import androidx.compose.material.icons.filled.DirectionsBike
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FitnessCenter
-import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.NightlightRound
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.WaterDrop
-import androidx.compose.material.icons.filled.Watch
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.outlined.Air
+import androidx.compose.material.icons.outlined.Adjust
+import androidx.compose.material.icons.outlined.BatteryChargingFull
+import androidx.compose.material.icons.outlined.Bedtime
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.DirectionsRun
+import androidx.compose.material.icons.outlined.EmojiEvents
+import androidx.compose.material.icons.outlined.FitnessCenter
+import androidx.compose.material.icons.outlined.SelfImprovement
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.storage.SavedWorkout
-import com.cmfwatch.companion.ui.theme.*
-import java.time.LocalTime
+import com.cmfwatch.companion.storage.UserGoalStore
+import com.cmfwatch.companion.ui.components.CmfAppHeader
+import com.cmfwatch.companion.ui.components.CmfPulseDot
+import com.cmfwatch.companion.ui.components.isCmfConnected
+import com.cmfwatch.companion.ui.theme.CmfBackground
+import com.cmfwatch.companion.ui.theme.CmfError
+import com.cmfwatch.companion.ui.theme.CmfOnSurface
+import com.cmfwatch.companion.ui.theme.CmfOnSurfaceVariant
+import com.cmfwatch.companion.ui.theme.CmfOutlineVariant
+import com.cmfwatch.companion.ui.theme.CmfPrimary
+import com.cmfwatch.companion.ui.theme.CmfPrimaryContainer
+import com.cmfwatch.companion.ui.theme.CmfSecondaryContainer
+import com.cmfwatch.companion.ui.theme.CmfSurfaceContainer
+import com.cmfwatch.companion.ui.theme.CmfSurfaceLow
+import com.cmfwatch.companion.ui.theme.CmfSurfaceLowest
+import com.cmfwatch.companion.ui.theme.CmfTertiary
+import com.cmfwatch.companion.ui.theme.CmfTertiaryContainer
+import com.cmfwatch.companion.ui.theme.HeadlineFontFamily
+import com.cmfwatch.companion.ui.theme.InterFontFamily
+import java.time.Duration
+import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import kotlin.math.PI
-import kotlin.math.cos
+import java.util.Locale
 import kotlin.math.max
-import kotlin.math.sin
+import kotlin.math.roundToInt
 
-// Material 3 Expressive Asymmetric Corner Shapes
-val AsymmetricShapeStart = RoundedCornerShape(topStart = 28.dp, topEnd = 10.dp, bottomStart = 10.dp, bottomEnd = 28.dp)
-val AsymmetricShapeEnd = RoundedCornerShape(topStart = 10.dp, topEnd = 28.dp, bottomStart = 28.dp, bottomEnd = 10.dp)
+private val CardShape = RoundedCornerShape(32.dp)
+private val PillShape = RoundedCornerShape(50)
+private val CardShadow = Color(0x14000000)
 
 @Composable
 fun HomeScreen(
@@ -65,1020 +90,1209 @@ fun HomeScreen(
     onWatchCardClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // Dynamic Time-Aware Greeting
-    val currentHour = remember { LocalTime.now().hour }
-    val greetingText = remember(currentHour) {
-        when (currentHour) {
-            in 4..11 -> "Good morning,"
-            in 12..16 -> "Good afternoon,"
-            in 17..23 -> "Good evening,"
-            else -> "Good night,"
+    val context = LocalContext.current
+    val goals = remember(context) { UserGoalStore(context).getGoals() }
+
+    val moveVal = summary.todayCaloriesKcal ?: 0
+    val moveGoal = goals.caloriesGoal
+    val moveProgress = (moveVal.toFloat() / moveGoal.toFloat()).coerceIn(0f, 1.2f)
+
+    val exerciseVal = remember(summary.workoutsToday, summary.todaySteps) {
+        val fromWorkouts = summary.workoutsToday.sumOf { it.durationMinutes }
+        when {
+            fromWorkouts > 0 -> fromWorkouts
+            summary.todaySteps != null && summary.todaySteps > 0 -> (summary.todaySteps / 120).coerceAtMost(90)
+            else -> 0
         }
     }
+    val exerciseGoal = goals.exerciseMinutesGoal
+    val exerciseProgress = (exerciseVal.toFloat() / exerciseGoal.toFloat()).coerceIn(0f, 1.2f)
 
-    LazyColumn(
+    val standVal = remember(summary.stepIntervalsToday) {
+        summary.stepIntervalsToday
+            .map { it.timestamp.atZone(ZoneId.systemDefault()).hour }
+            .distinct()
+            .size
+    }
+    val standGoal = goals.standHoursGoal
+    val standProgress = (standVal.toFloat() / standGoal.toFloat()).coerceIn(0f, 1.2f)
+
+    val completedPct = (((moveProgress.coerceAtMost(1f) +
+        exerciseProgress.coerceAtMost(1f) +
+        standProgress.coerceAtMost(1f)) / 3f) * 100f).roundToInt()
+    val goalPct = completedPct.coerceAtLeast(
+        ((moveProgress.coerceAtMost(1f) * 100f)).roundToInt()
+    )
+
+    val sleepMinutes = summary.lastSleepMinutes
+    val sleepScore = sleepMinutes?.let { ((it / 480f) * 100f).roundToInt().coerceIn(0, 100) }
+    val hrMin = summary.hrSamplesToday.minOfOrNull { it.bpm }
+    val hrMax = summary.hrSamplesToday.maxOfOrNull { it.bpm }
+    val hrPoints = remember(summary.hrSamplesToday) {
+        summary.hrSamplesToday.takeLast(24).map { it.bpm.toFloat() }
+    }
+
+    val latestWorkout = summary.workoutsToday.maxByOrNull { it.startTime }
+    val remainingKcal = max(0, moveGoal - moveVal)
+
+    val readiness = remember(sleepScore, summary.latestHeartRate, summary.latestStressScore) {
+        deriveReadiness(sleepScore, summary.latestHeartRate, summary.latestStressScore)
+    }
+
+    Column(
         modifier = modifier
             .fillMaxSize()
-            .background(BlackBackground)
-            .statusBarsPadding()
-            .padding(horizontal = 20.dp),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+            .background(CmfBackground)
     ) {
-        // 1. Expressive Ambient Greeting Header Bar (No Red Dot)
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = greetingText,
-                        fontFamily = AppFontFamily,
-                        fontSize = 14.sp,
-                        color = TextSecondary
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "Rasagna ",
-                            fontFamily = AppFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 28.sp,
-                            color = TextPrimary
-                        )
-                        Text(
-                            text = "✨",
-                            fontSize = 24.sp
-                        )
-                    }
-                }
+        CmfAppHeader(
+            connected = summary.connectionState.isCmfConnected(),
+            battery = summary.deviceBatteryLevel,
+            onAvatarClick = onWatchCardClick
+        )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Notification Bell Button (Clean, NO Red Dot)
-                    IconButton(
-                        onClick = { },
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(SurfaceWhite)
-                            .border(1.dp, DividerColor, CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Notifications,
-                            contentDescription = "Notifications",
-                            tint = TextPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // Settings Gear Button
-                    IconButton(
-                        onClick = { },
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(SurfaceWhite)
-                            .border(1.dp, DividerColor, CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Settings",
-                            tint = TextPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = 20.dp,
+                end = 20.dp,
+                top = 8.dp,
+                bottom = 132.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            item {
+                DateGreetingRow(lastSyncedAt = summary.lastSyncedAt)
             }
-        }
 
-        // 2. Hero Material 3 Expressive Wavy Arc Step Ring & Odometer Display Card
-        item {
-            val stepsVal = summary.todaySteps
-            val calVal = summary.todayCaloriesKcal
-            val distVal = summary.todayDistanceKm
-
-            val stepsProgress = ((stepsVal ?: 0).toFloat() / 10000f).coerceIn(0f, 1f)
-            val calProgress = ((calVal ?: 0).toFloat() / 500f).coerceIn(0f, 1f)
-            val distProgress = ((distVal ?: 0.0f) / 8.0f).coerceIn(0f, 1f)
-
-            val pct = (stepsProgress * 100).toInt()
-
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(AsymmetricShapeStart)
-                    .border(1.dp, DividerColor, AsymmetricShapeStart)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { onActivityClick() },
-                color = SurfaceWhite,
-                shadowElevation = 0.dp
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(22.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Stride-style Expressive Wavy Arc Canvas
-                        Box(
-                            modifier = Modifier.size(150.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                val strokeWidth = 9.dp.toPx()
-                                val center = Offset(size.width / 2, size.height / 2)
-
-                                // Outer Wavy Ring - Steps (Neon Emerald #00E676)
-                                val radius1 = (size.width / 2) - strokeWidth / 2
-                                drawCircle(
-                                    color = RingGreenBg,
-                                    radius = radius1,
-                                    center = center,
-                                    style = Stroke(width = strokeWidth)
-                                )
-
-                                // Expressive Fluid Wavy Step Arc Path
-                                if (stepsProgress > 0f) {
-                                    val sweepAngle = 360f * stepsProgress
-                                    val path = Path()
-                                    val startAngleRad = -Math.PI / 2
-                                    val endAngleRad = startAngleRad + (sweepAngle * (Math.PI / 180.0))
-
-                                    var first = true
-                                    var angle = startAngleRad
-                                    val stepAngle = Math.PI / 90.0
-                                    while (angle <= endAngleRad) {
-                                        val wave = sin(angle * 10).toFloat() * 2.5.dp.toPx()
-                                        val r = radius1 + wave
-                                        val x = center.x + r * cos(angle).toFloat()
-                                        val y = center.y + r * sin(angle).toFloat()
-
-                                        if (first) {
-                                            path.moveTo(x, y)
-                                            first = false
-                                        } else {
-                                            path.lineTo(x, y)
-                                        }
-                                        angle += stepAngle
-                                    }
-
-                                    drawPath(
-                                        path = path,
-                                        color = RingGreen,
-                                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                                    )
-                                }
-
-                                // Middle Ring - Calories (Vivid Orange #FF6D00)
-                                val radius2 = radius1 - strokeWidth - 5.dp.toPx()
-                                drawCircle(
-                                    color = RingOrangeBg,
-                                    radius = radius2,
-                                    center = center,
-                                    style = Stroke(width = strokeWidth)
-                                )
-                                drawArc(
-                                    color = RingOrange,
-                                    startAngle = -90f,
-                                    sweepAngle = 360f * calProgress,
-                                    useCenter = false,
-                                    topLeft = Offset(center.x - radius2, center.y - radius2),
-                                    size = Size(radius2 * 2, radius2 * 2),
-                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                                )
-
-                                // Inner Ring - Distance (Electric Blue #00B0FF)
-                                val radius3 = radius2 - strokeWidth - 5.dp.toPx()
-                                drawCircle(
-                                    color = RingBlueBg,
-                                    radius = radius3,
-                                    center = center,
-                                    style = Stroke(width = strokeWidth)
-                                )
-                                drawArc(
-                                    color = RingBlue,
-                                    startAngle = -90f,
-                                    sweepAngle = 360f * distProgress,
-                                    useCenter = false,
-                                    topLeft = Offset(center.x - radius3, center.y - radius3),
-                                    size = Size(radius3 * 2, radius3 * 2),
-                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        // Expressive 52sp Odometer Display Number & Progress Badge
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = RingGreenBg,
-                                modifier = Modifier.clip(RoundedCornerShape(12.dp))
-                            ) {
-                                Text(
-                                    text = if (stepsVal != null) "$pct% of 10,000 steps" else "No step data",
-                                    fontFamily = AppFontFamily,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 10.sp,
-                                    color = RingGreen,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            Text(
-                                text = stepsVal?.let { String.format("%,d", it) } ?: "--",
-                                fontFamily = AppFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 38.sp,
-                                color = TextPrimary
-                            )
-
-                            Text(
-                                text = "DAILY STEPS",
-                                fontFamily = AppFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 10.sp,
-                                color = TextMuted,
-                                letterSpacing = 1.2.sp
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(18.dp))
-
-                    // Expressive Tonal Pill Row for Steps, Calories, Distance
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        ExpressiveMetricChip(
-                            modifier = Modifier.weight(1f),
-                            icon = Icons.Default.DirectionsWalk,
-                            iconBg = RingGreenBg,
-                            accentColor = RingGreen,
-                            value = stepsVal?.let { String.format("%,d", it) } ?: "--",
-                            unit = "steps"
-                        )
-
-                        ExpressiveMetricChip(
-                            modifier = Modifier.weight(1f),
-                            icon = Icons.Default.LocalFireDepartment,
-                            iconBg = RingOrangeBg,
-                            accentColor = RingOrange,
-                            value = calVal?.toString() ?: "--",
-                            unit = "kcal"
-                        )
-
-                        ExpressiveMetricChip(
-                            modifier = Modifier.weight(1f),
-                            icon = Icons.Default.Place,
-                            iconBg = RingBlueBg,
-                            accentColor = RingBlue,
-                            value = distVal?.let { String.format("%.1f", it) } ?: "--",
-                            unit = "km"
-                        )
-                    }
-                }
-            }
-        }
-
-        // 3. Material 3 Expressive AssistChips Navigation Strip
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                ExpressiveNavChip(
-                    modifier = Modifier.weight(1f),
-                    title = "Activity",
-                    icon = Icons.Default.DirectionsRun,
-                    accentColor = RingGreen,
-                    shape = AsymmetricShapeStart,
+            item {
+                ActivityRingsCard(
+                    completedPct = completedPct,
+                    goalPct = goalPct,
+                    moveVal = moveVal,
+                    moveGoal = moveGoal,
+                    exerciseVal = exerciseVal,
+                    exerciseGoal = exerciseGoal,
+                    standVal = standVal,
+                    standGoal = standGoal,
+                    moveProgress = moveProgress.coerceAtMost(1f),
+                    exerciseProgress = exerciseProgress.coerceAtMost(1f),
+                    standProgress = standProgress.coerceAtMost(1f),
                     onClick = onActivityClick
                 )
-
-                ExpressiveNavChip(
-                    modifier = Modifier.weight(1f),
-                    title = "Vitals",
-                    icon = Icons.Default.Favorite,
-                    accentColor = HeartRateRed,
-                    shape = AsymmetricShapeEnd,
-                    onClick = onHeartRateClick
-                )
-
-                ExpressiveNavChip(
-                    modifier = Modifier.weight(1f),
-                    title = "Sleep",
-                    icon = Icons.Default.NightlightRound,
-                    accentColor = SleepPurple,
-                    shape = AsymmetricShapeStart,
-                    onClick = onSleepClick
-                )
-
-                ExpressiveNavChip(
-                    modifier = Modifier.weight(1f),
-                    title = "Device",
-                    icon = Icons.Default.Watch,
-                    accentColor = RingBlue,
-                    shape = AsymmetricShapeEnd,
-                    onClick = onWatchCardClick
-                )
             }
-        }
 
-        // 4. Material 3 Expressive 2x2 Bento Grid with Asymmetric Corners
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Row 1: Heart Rate & Sleep
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Heart Rate Bento Card (AsymmetricShapeStart)
-                    ExpressiveBentoCard(
-                        modifier = Modifier.weight(1f),
-                        title = "Heart Rate",
-                        valueText = summary.latestHeartRate?.let { "$it bpm" } ?: "-- bpm",
-                        subtitleText = "Resting",
-                        icon = Icons.Default.Favorite,
-                        iconBg = HeartRateBg,
-                        accentColor = HeartRateRed,
-                        shape = AsymmetricShapeStart,
-                        onClick = onHeartRateClick,
-                        content = {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(34.dp)
-                            ) {
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val width = size.width
-                                    val height = size.height
-
-                                    val samples = summary.hrSamplesToday
-                                    if (samples.isNotEmpty()) {
-                                        val maxBpm = maxOf(120, samples.maxOf { it.bpm })
-                                        val minBpm = minOf(50, samples.minOf { it.bpm })
-                                        val range = maxOf(1, maxBpm - minBpm)
-                                        val points = samples.takeLast(10).mapIndexed { idx, item ->
-                                            val x = (idx.toFloat() / maxOf(1, samples.takeLast(10).size - 1)) * width
-                                            val y = height - (((item.bpm - minBpm).toFloat() / range.toFloat()) * (height - 4))
-                                            Offset(x, y)
-                                        }
-
-                                        val path = Path().apply {
-                                            moveTo(points.first().x, points.first().y)
-                                            for (i in 0 until points.size - 1) {
-                                                val p1 = points[i]
-                                                val p2 = points[i + 1]
-                                                val controlX = (p1.x + p2.x) / 2
-                                                cubicTo(controlX, p1.y, controlX, p2.y, p2.x, p2.y)
-                                            }
-                                        }
-
-                                        drawPath(
-                                            path = path,
-                                            color = HeartRateRed,
-                                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                                        )
-                                    } else {
-                                        drawLine(
-                                            color = HeartRateRed.copy(alpha = 0.3f),
-                                            start = Offset(0f, height * 0.7f),
-                                            end = Offset(width, height * 0.7f),
-                                            strokeWidth = 1.dp.toPx()
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    )
-
-                    // Sleep Bento Card (AsymmetricShapeEnd)
-                    val sleepMins = summary.lastSleepMinutes
-                    val sleepText = if (sleepMins != null) {
-                        "${sleepMins / 60}h ${sleepMins % 60}m"
-                    } else {
-                        "--"
-                    }
-
-                    ExpressiveBentoCard(
-                        modifier = Modifier.weight(1f),
-                        title = "Sleep",
-                        valueText = sleepText,
-                        subtitleText = "Last night",
-                        icon = Icons.Default.NightlightRound,
-                        iconBg = SleepPurpleBg,
-                        accentColor = SleepPurple,
-                        shape = AsymmetricShapeEnd,
-                        onClick = onSleepClick,
-                        content = {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(34.dp),
-                                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                verticalAlignment = Alignment.Bottom
-                            ) {
-                                if (sleepMins != null && sleepMins > 0) {
-                                    listOf(0.4f, 0.7f, 0.3f, 0.9f, 0.5f, 0.8f, 0.2f, 1.0f).forEach { hRatio ->
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .fillMaxHeight(hRatio)
-                                                .clip(RoundedCornerShape(2.dp))
-                                                .background(SleepPurple.copy(alpha = 0.3f + (hRatio * 0.7f)))
-                                        )
-                                    }
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(1.dp)
-                                            .background(SleepPurple.copy(alpha = 0.3f))
-                                            .align(Alignment.CenterVertically)
-                                    )
-                                }
-                            }
-                        }
-                    )
-                }
-
-                // Row 2: SpO2 Blood Oxygen & Stress Score
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // SpO2 Bento Card (AsymmetricShapeEnd)
-                    val spo2Val = summary.latestSpO2
-                    val spo2Status = when {
-                        spo2Val == null -> "--"
-                        spo2Val >= 95 -> "Optimal"
-                        spo2Val >= 90 -> "Normal"
-                        else -> "Low"
-                    }
-
-                    ExpressiveBentoCard(
-                        modifier = Modifier.weight(1f),
-                        title = "SpO2",
-                        valueText = spo2Val?.let { "$it%" } ?: "--%",
-                        subtitleText = "Blood Oxygen",
-                        icon = Icons.Default.WaterDrop,
-                        iconBg = Color(0xFF0C2A3A),
-                        accentColor = Color(0xFF38BDF8),
-                        shape = AsymmetricShapeEnd,
-                        onClick = { },
-                        content = {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF0C2A3A),
-                                modifier = Modifier.padding(top = 4.dp)
-                            ) {
-                                Text(
-                                    text = spo2Status,
-                                    fontFamily = AppFontFamily,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF38BDF8),
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    )
-
-                    // Stress Bento Card (AsymmetricShapeStart)
-                    val stressVal = summary.latestStressScore
-                    val stressStatus = when {
-                        stressVal == null -> "--"
-                        stressVal < 30 -> "Relaxed"
-                        stressVal < 60 -> "Normal"
-                        else -> "High"
-                    }
-
-                    ExpressiveBentoCard(
-                        modifier = Modifier.weight(1f),
-                        title = "Stress",
-                        valueText = stressVal?.toString() ?: "--",
-                        subtitleText = "Daily Score",
-                        icon = Icons.Default.Psychology,
-                        iconBg = Color(0xFF3B2A08),
-                        accentColor = Color(0xFFF59E0B),
-                        shape = AsymmetricShapeStart,
-                        onClick = { },
-                        content = {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF3B2A08),
-                                modifier = Modifier.padding(top = 4.dp)
-                            ) {
-                                Text(
-                                    text = stressStatus,
-                                    fontFamily = AppFontFamily,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 11.sp,
-                                    color = Color(0xFFF59E0B),
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    )
-                }
-            }
-        }
-
-        // 5. 7-Day Activity Distribution Bar Chart Card
-        item {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .border(1.dp, DividerColor, RoundedCornerShape(24.dp)),
-                color = SurfaceWhite,
-                shadowElevation = 0.dp
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp)
-                ) {
-                    Text(
-                        text = "Weekly Activity",
-                        fontFamily = AppFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = TextPrimary
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "7-Day Step Breakdown",
-                        fontFamily = AppFontFamily,
-                        fontSize = 12.sp,
-                        color = TextSecondary
-                    )
-
-                    Spacer(modifier = Modifier.height(18.dp))
-
-                    val days = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-                    val weeklyIntervals = summary.stepIntervalsToday
-
-                    // Calculate height ratios or baseline
-                    val barRatios = remember(weeklyIntervals) {
-                        if (weeklyIntervals.isNotEmpty()) {
-                            val buckets = FloatArray(7) { 0f }
-                            weeklyIntervals.forEach { item ->
-                                val dayIndex = (item.timestamp.atZone(ZoneId.systemDefault()).dayOfWeek.value - 1) % 7
-                                buckets[dayIndex] += item.steps.toFloat()
-                            }
-                            val maxVal = max(1f, buckets.maxOrNull() ?: 1f)
-                            buckets.map { (it / maxVal).coerceIn(0f, 1.0f) }
-                        } else {
-                            List(7) { 0f }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(110.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Bottom
-                    ) {
-                        days.forEachIndexed { idx, day ->
-                            val ratio = barRatios.getOrElse(idx) { 0f }
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .width(16.dp)
-                                        .height(80.dp),
-                                    contentAlignment = Alignment.BottomCenter
-                                ) {
-                                    // Track
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(SurfaceCardAlt)
-                                    )
-                                    // Active Bar
-                                    if (ratio > 0f) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .fillMaxHeight(ratio)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(RingGreen)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                Text(
-                                    text = day,
-                                    fontFamily = AppFontFamily,
-                                    fontSize = 11.sp,
-                                    color = TextSecondary
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 6. Recent Workouts Section
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Recent Workouts",
-                    fontFamily = AppFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = TextPrimary
-                )
-
-                TextTextButton(
-                    onClick = { },
-                    text = "See All"
-                )
-            }
-        }
-
-        if (summary.workoutsToday.isEmpty()) {
             item {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .border(1.dp, DividerColor, RoundedCornerShape(20.dp)),
-                    color = SurfaceWhite,
-                    shadowElevation = 0.dp
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .background(SurfaceCardAlt),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.DirectionsRun,
-                                contentDescription = null,
-                                tint = TextSecondary,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = "No Workouts Today",
-                            fontFamily = AppFontFamily,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp,
-                            color = TextPrimary
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Start a workout from your CMF Watch to see stats here",
-                            fontFamily = AppFontFamily,
-                            fontSize = 12.sp,
-                            color = TextSecondary
-                        )
-                    }
-                }
+                VitalsGlanceSection(
+                    bpm = summary.latestHeartRate,
+                    hrMin = hrMin,
+                    hrMax = hrMax,
+                    hrPoints = hrPoints,
+                    sleepScore = sleepScore,
+                    sleepMinutes = sleepMinutes,
+                    spo2 = summary.latestSpO2,
+                    stress = summary.latestStressScore,
+                    onHeartRateClick = onHeartRateClick,
+                    onSleepClick = onSleepClick
+                )
             }
-        } else {
-            items(summary.workoutsToday) { workout ->
-                HomeWorkoutRowItem(workout = workout)
+
+            item {
+                ReadinessCard(readiness = readiness, onSuggestedClick = onActivityClick)
             }
+
+            item {
+                LatestWorkoutSection(
+                    workout = latestWorkout,
+                    fallbackDistanceKm = summary.todayDistanceKm,
+                    fallbackKcal = summary.todayCaloriesKcal,
+                    onViewAll = onActivityClick
+                )
+            }
+
+            item {
+                DailyMilestoneBanner(remainingKcal = remainingKcal)
+            }
+
+            item { Spacer(modifier = Modifier.height(8.dp)) }
         }
     }
 }
 
-// ==========================================
-// Sub-components
-// ==========================================
-
 @Composable
-fun ExpressiveMetricChip(
-    modifier: Modifier = Modifier,
-    icon: ImageVector,
-    iconBg: Color,
-    accentColor: Color,
-    value: String,
-    unit: String
-) {
+private fun DateGreetingRow(lastSyncedAt: Instant?) {
     Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(SurfaceCardAlt)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Bottom
     ) {
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(iconBg),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = accentColor,
-                modifier = Modifier.size(15.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
         Column {
             Text(
-                text = value,
-                fontFamily = AppFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                color = TextPrimary
+                text = LocalDate.now()
+                    .format(DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.getDefault()))
+                    .uppercase(Locale.getDefault()),
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.sp,
+                letterSpacing = 0.8.sp,
+                color = CmfOnSurfaceVariant
             )
             Text(
-                text = unit,
-                fontFamily = AppFontFamily,
-                fontSize = 10.sp,
-                color = TextSecondary
+                text = "Today",
+                fontFamily = HeadlineFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 28.sp,
+                letterSpacing = (-0.5).sp,
+                color = CmfOnSurface
+            )
+        }
+        Row(
+            modifier = Modifier
+                .shadow(1.dp, PillShape)
+                .clip(PillShape)
+                .background(CmfSurfaceLowest)
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CmfPulseDot(color = CmfTertiaryContainer, size = 8.dp)
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = formatSynced(lastSyncedAt),
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = 12.sp,
+                color = CmfOnSurfaceVariant
             )
         }
     }
 }
 
 @Composable
-fun ExpressiveNavChip(
-    modifier: Modifier = Modifier,
-    title: String,
-    icon: ImageVector,
-    accentColor: Color,
-    shape: RoundedCornerShape,
+private fun ActivityRingsCard(
+    completedPct: Int,
+    goalPct: Int,
+    moveVal: Int,
+    moveGoal: Int,
+    exerciseVal: Int,
+    exerciseGoal: Int,
+    standVal: Int,
+    standGoal: Int,
+    moveProgress: Float,
+    exerciseProgress: Float,
+    standProgress: Float,
     onClick: () -> Unit
 ) {
-    Surface(
-        modifier = modifier
-            .clip(shape)
-            .border(1.dp, DividerColor, shape)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onClick() },
-        color = SurfaceWhite,
-        shadowElevation = 0.dp
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(1.dp, CardShape, ambientColor = CardShadow, spotColor = CardShadow)
+            .clip(CardShape)
+            .background(CmfSurfaceLowest)
+            .clickable(onClick = onClick)
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.Adjust,
+                    contentDescription = null,
+                    tint = CmfPrimaryContainer,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Activity Rings",
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 18.sp,
+                    color = CmfOnSurface
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(PillShape)
+                    .background(CmfSurfaceLow)
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                Text(
+                    text = "GOAL $goalPct%",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.sp,
+                    letterSpacing = 0.6.sp,
+                    color = CmfOnSurfaceVariant
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .padding(vertical = 12.dp)
+                .size(252.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            ConcentricActivityRings(
+                move = moveProgress,
+                exercise = exerciseProgress,
+                stand = standProgress,
+                modifier = Modifier.fillMaxSize()
+            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = "$completedPct",
+                        fontFamily = HeadlineFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 34.sp,
+                        letterSpacing = (-0.7).sp,
+                        color = CmfOnSurface
+                    )
+                    Text(
+                        text = "%",
+                        fontFamily = HeadlineFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = CmfOnSurface,
+                        modifier = Modifier.padding(bottom = 4.dp, start = 1.dp)
+                    )
+                }
+                Text(
+                    text = "COMPLETED",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 10.sp,
+                    letterSpacing = 0.8.sp,
+                    color = CmfOnSurfaceVariant
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            RingMetricChip(
+                modifier = Modifier.weight(1f),
+                label = "MOVE",
+                value = "$moveVal",
+                subtitle = "/ $moveGoal kcal",
+                dot = CmfPrimaryContainer
+            )
+            RingMetricChip(
+                modifier = Modifier.weight(1f),
+                label = "EXERCISE",
+                value = "$exerciseVal",
+                subtitle = "/ $exerciseGoal min",
+                dot = CmfTertiaryContainer
+            )
+            RingMetricChip(
+                modifier = Modifier.weight(1f),
+                label = "STAND",
+                value = "$standVal",
+                subtitle = "/ $standGoal hrs",
+                dot = CmfSecondaryContainer
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConcentricActivityRings(
+    move: Float,
+    exercise: Float,
+    stand: Float,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = 11.dp.toPx()
+        val gap = 10.dp.toPx()
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val outer = size.minDimension / 2f - stroke / 2f - 6.dp.toPx()
+        val mid = outer - stroke - gap
+        val inner = mid - stroke - gap
+        val track = CmfSurfaceContainer
+
+        fun ring(radius: Float, progress: Float, color: Color) {
+            val topLeft = Offset(cx - radius, cy - radius)
+            val arcSize = Size(radius * 2, radius * 2)
+            drawArc(
+                color = track,
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = Stroke(width = stroke, cap = StrokeCap.Round)
+            )
+            if (progress > 0f) {
+                drawArc(
+                    color = color,
+                    startAngle = -90f,
+                    sweepAngle = 360f * progress.coerceIn(0f, 1f),
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = stroke, cap = StrokeCap.Round)
+                )
+            }
+        }
+
+        ring(outer, move, CmfPrimaryContainer)
+        ring(mid, exercise, CmfTertiaryContainer)
+        ring(inner, stand, CmfSecondaryContainer)
+    }
+}
+
+@Composable
+private fun RingMetricChip(
+    label: String,
+    value: String,
+    subtitle: String,
+    dot: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(CmfSurfaceLow)
+            .padding(vertical = 10.dp, horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(dot)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = label,
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = 11.sp,
+                letterSpacing = 0.5.sp,
+                color = CmfOnSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = value,
+            fontFamily = HeadlineFontFamily,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            color = CmfOnSurface
+        )
+        Text(
+            text = subtitle,
+            fontFamily = InterFontFamily,
+            fontWeight = FontWeight.Medium,
+            fontSize = 12.sp,
+            color = CmfOnSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun VitalsGlanceSection(
+    bpm: Int?,
+    hrMin: Int?,
+    hrMax: Int?,
+    hrPoints: List<Float>,
+    sleepScore: Int?,
+    sleepMinutes: Int?,
+    spo2: Int?,
+    stress: Int?,
+    onHeartRateClick: () -> Unit,
+    onSleepClick: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp, horizontal = 6.dp),
-            horizontalArrangement = Arrangement.Center,
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Vitals Glance",
+                fontFamily = HeadlineFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = CmfOnSurface
+            )
+            Text(
+                text = "Live stream",
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp,
+                color = CmfPrimary
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            HeartRateCard(
+                modifier = Modifier.weight(1f),
+                bpm = bpm,
+                min = hrMin,
+                max = hrMax,
+                points = hrPoints,
+                onClick = onHeartRateClick
+            )
+            SleepCard(
+                modifier = Modifier.weight(1f),
+                score = sleepScore,
+                minutes = sleepMinutes,
+                onClick = onSleepClick
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            BloodOxygenCard(modifier = Modifier.weight(1f), spo2 = spo2)
+            StressCard(modifier = Modifier.weight(1f), score = stress)
+        }
+    }
+}
+
+@Composable
+private fun VitalCardScaffold(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = modifier
+            .height(176.dp)
+            .shadow(1.dp, CardShape, ambientColor = CardShadow, spotColor = CardShadow)
+            .clip(CardShape)
+            .background(CmfSurfaceLowest)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+        content = content
+    )
+}
+
+@Composable
+private fun HeartRateCard(
+    bpm: Int?,
+    min: Int?,
+    max: Int?,
+    points: List<Float>,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    VitalCardScaffold(modifier = modifier, onClick = onClick) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                text = "HEART RATE",
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.sp,
+                letterSpacing = 0.6.sp,
+                color = CmfOnSurfaceVariant
+            )
+            Icon(
+                imageVector = Icons.Filled.Favorite,
+                contentDescription = null,
+                tint = CmfError,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Column {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = bpm?.toString() ?: "--",
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 36.sp,
+                    letterSpacing = (-0.7).sp,
+                    color = CmfOnSurface
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "BPM",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    color = CmfOnSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
+            Text(
+                text = if (min != null && max != null) "$min - $max range" else "Waiting for samples",
+                fontFamily = InterFontFamily,
+                fontSize = 13.sp,
+                color = CmfOnSurfaceVariant
+            )
+        }
+        Sparkline(points = points, color = CmfError, modifier = Modifier.fillMaxWidth().height(32.dp))
+    }
+}
+
+@Composable
+private fun SleepCard(
+    score: Int?,
+    minutes: Int?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val duration = minutes?.let { "${it / 60}h ${it % 60}m" } ?: "--"
+    val delta = minutes?.let { it - 438 }
+    VitalCardScaffold(modifier = modifier, onClick = onClick) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                text = "SLEEP",
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.sp,
+                letterSpacing = 0.6.sp,
+                color = CmfOnSurfaceVariant
+            )
+            Icon(
+                imageVector = Icons.Outlined.Bedtime,
+                contentDescription = null,
+                tint = CmfSecondaryContainer,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Column {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = score?.toString() ?: "--",
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 36.sp,
+                    letterSpacing = (-0.7).sp,
+                    color = CmfOnSurface
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "/ 100",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    color = CmfOnSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
+            Text(
+                text = when {
+                    score == null -> "No sleep data"
+                    score >= 80 -> "Optimal rest"
+                    score >= 60 -> "Fair recovery"
+                    else -> "Needs rest"
+                },
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp,
+                color = CmfTertiary
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(PillShape)
+                .background(CmfSurfaceLow)
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = duration,
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp,
+                color = CmfOnSurface
+            )
+            Text(
+                text = when {
+                    delta == null -> ""
+                    delta >= 0 -> "+${delta}m"
+                    else -> "${delta}m"
+                },
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = 12.sp,
+                color = CmfTertiary
+            )
+        }
+    }
+}
+
+@Composable
+private fun BloodOxygenCard(spo2: Int?, modifier: Modifier = Modifier) {
+    VitalCardScaffold(modifier = modifier) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                text = "BLOOD OXYGEN",
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.sp,
+                letterSpacing = 0.6.sp,
+                color = CmfOnSurfaceVariant
+            )
+            Icon(
+                imageVector = Icons.Outlined.Air,
+                contentDescription = null,
+                tint = CmfSecondaryContainer,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Column {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = spo2?.toString() ?: "--",
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 36.sp,
+                    letterSpacing = (-0.7).sp,
+                    color = CmfOnSurface
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "%",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    color = CmfOnSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
+            Text(
+                text = when {
+                    spo2 == null -> "No reading yet"
+                    spo2 >= 95 -> "Baseline normal"
+                    else -> "Below baseline"
+                },
+                fontFamily = InterFontFamily,
+                fontSize = 13.sp,
+                color = CmfOnSurfaceVariant
+            )
+        }
+        ThinProgress(progress = (spo2 ?: 0) / 100f, color = CmfSecondaryContainer)
+    }
+}
+
+@Composable
+private fun StressCard(score: Int?, modifier: Modifier = Modifier) {
+    VitalCardScaffold(modifier = modifier) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                text = "STRESS",
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.sp,
+                letterSpacing = 0.6.sp,
+                color = CmfOnSurfaceVariant
+            )
+            Icon(
+                imageVector = Icons.Outlined.SelfImprovement,
+                contentDescription = null,
+                tint = CmfTertiary,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Column {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = score?.toString() ?: "--",
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 36.sp,
+                    letterSpacing = (-0.7).sp,
+                    color = CmfOnSurface
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "/ 100",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    color = CmfOnSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
+            Text(
+                text = when {
+                    score == null -> "No reading yet"
+                    score <= 30 -> "Relaxed state"
+                    score <= 60 -> "Moderate load"
+                    else -> "High strain"
+                },
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp,
+                color = CmfTertiary
+            )
+        }
+        ThinProgress(progress = (score ?: 0) / 100f, color = CmfTertiaryContainer)
+    }
+}
+
+@Composable
+private fun ThinProgress(progress: Float, color: Color) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(8.dp)
+            .clip(PillShape)
+            .background(CmfSurfaceContainer)
+    ) {
+        if (progress > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress.coerceIn(0.02f, 1f))
+                    .height(8.dp)
+                    .clip(PillShape)
+                    .background(color)
+            )
+        }
+    }
+}
+
+@Composable
+private fun Sparkline(points: List<Float>, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        if (points.size < 2) {
+            val w = size.width
+            val h = size.height
+            val line = Path().apply {
+                moveTo(0f, h * 0.75f)
+                cubicTo(w * 0.12f, h * 0.88f, w * 0.22f, h * 0.45f, w * 0.32f, h * 0.56f)
+                cubicTo(w * 0.42f, h * 0.68f, w * 0.48f, h * 0.38f, w * 0.58f, h * 0.44f)
+                cubicTo(w * 0.70f, h * 0.52f, w * 0.78f, h * 0.72f, w * 0.88f, h * 0.38f)
+                lineTo(w, h * 0.28f)
+            }
+            val fill = Path().apply {
+                addPath(line)
+                lineTo(w, h)
+                lineTo(0f, h)
+                close()
+            }
+            drawPath(fill, color.copy(alpha = 0.10f))
+            drawPath(line, color, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+            return@Canvas
+        }
+        val min = points.min()
+        val max = points.max().coerceAtLeast(min + 1f)
+        val line = Path()
+        val fill = Path()
+        points.forEachIndexed { i, v ->
+            val x = size.width * (i / (points.lastIndex.toFloat()))
+            val y = size.height * (1f - ((v - min) / (max - min)))
+            if (i == 0) {
+                line.moveTo(x, y)
+                fill.moveTo(x, size.height)
+                fill.lineTo(x, y)
+            } else {
+                line.lineTo(x, y)
+                fill.lineTo(x, y)
+            }
+        }
+        fill.lineTo(size.width, size.height)
+        fill.close()
+        drawPath(fill, color.copy(alpha = 0.12f))
+        drawPath(line, color, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+    }
+}
+
+@Composable
+private fun ReadinessCard(readiness: Readiness, onSuggestedClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(1.dp, CardShape, ambientColor = CardShadow, spotColor = CardShadow)
+            .clip(CardShape)
+            .background(CmfSurfaceLowest)
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(CmfTertiaryContainer.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.BatteryChargingFull,
+                        contentDescription = null,
+                        tint = CmfTertiary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = "DAILY READINESS",
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.sp,
+                        letterSpacing = 0.6.sp,
+                        color = CmfOnSurfaceVariant
+                    )
+                    Text(
+                        text = "Score: ${readiness.score} · ${readiness.band}",
+                        fontFamily = HeadlineFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = CmfOnSurface
+                    )
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .clip(PillShape)
+                    .background(CmfTertiaryContainer.copy(alpha = 0.15f))
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                Text(
+                    text = readiness.badge,
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    letterSpacing = 0.6.sp,
+                    color = CmfTertiary
+                )
+            }
+        }
+        Text(
+            text = readiness.blurb,
+            fontFamily = InterFontFamily,
+            fontSize = 15.sp,
+            lineHeight = 21.sp,
+            color = CmfOnSurfaceVariant
+        )
+        Row(
+            modifier = Modifier
+                .clip(PillShape)
+                .background(CmfSurfaceContainer)
+                .clickable(onClick = onSuggestedClick)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = accentColor,
-                modifier = Modifier.size(16.dp)
+                imageVector = Icons.Outlined.FitnessCenter,
+                contentDescription = null,
+                tint = CmfPrimary,
+                modifier = Modifier.size(18.dp)
             )
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = title,
-                fontFamily = AppFontFamily,
+                text = readiness.suggestion,
+                fontFamily = InterFontFamily,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 12.sp,
-                color = TextPrimary
+                color = CmfOnSurface
             )
         }
     }
 }
 
 @Composable
-fun ExpressiveBentoCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    valueText: String,
-    subtitleText: String,
-    icon: ImageVector,
-    iconBg: Color,
-    accentColor: Color,
-    shape: RoundedCornerShape,
-    onClick: () -> Unit,
-    content: @Composable () -> Unit
+private fun LatestWorkoutSection(
+    workout: SavedWorkout?,
+    fallbackDistanceKm: Float?,
+    fallbackKcal: Int?,
+    onViewAll: () -> Unit
 ) {
-    Surface(
-        modifier = modifier
-            .clip(shape)
-            .border(1.dp, DividerColor, shape)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onClick() },
-        color = SurfaceWhite,
-        shadowElevation = 0.dp
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(iconBg),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = title,
-                            tint = accentColor,
-                            modifier = Modifier.size(15.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = title,
-                        fontFamily = AppFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = TextPrimary
-                    )
-                }
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = valueText,
-                fontFamily = AppFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                color = TextPrimary
-            )
-            Text(
-                text = subtitleText,
-                fontFamily = AppFontFamily,
-                fontSize = 11.sp,
-                color = TextSecondary
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            content()
-        }
-    }
-}
-
-@Composable
-fun HomeWorkoutRowItem(workout: SavedWorkout) {
-    val icon = when (workout.type.lowercase()) {
-        "running", "run" -> Icons.Default.DirectionsRun
-        "cycling", "cycle" -> Icons.Default.DirectionsBike
-        "walking", "walk" -> Icons.Default.DirectionsWalk
-        else -> Icons.Default.FitnessCenter
-    }
-
-    val iconBg = when (workout.type.lowercase()) {
-        "running", "run" -> SleepPurpleBg
-        "cycling", "cycle" -> RingBlueBg
-        "walking", "walk" -> RingGreenBg
-        else -> RingOrangeBg
-    }
-
-    val iconTint = when (workout.type.lowercase()) {
-        "running", "run" -> SleepPurple
-        "cycling", "cycle" -> RingBlue
-        "walking", "walk" -> RingGreen
-        else -> RingOrange
-    }
-
-    val timeStr = remember(workout.startTime) {
-        val dt = workout.startTime.atZone(ZoneId.systemDefault())
-        dt.format(DateTimeFormatter.ofPattern("MMM d, h:mm a"))
-    }
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .border(1.dp, DividerColor, RoundedCornerShape(20.dp)),
-        color = SurfaceWhite,
-        shadowElevation = 0.dp
-    ) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Latest Workout",
+                fontFamily = HeadlineFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = CmfOnSurface
+            )
+            Row(
+                modifier = Modifier.clickable(onClick = onViewAll),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "View all",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    color = CmfPrimary
+                )
+                Icon(
+                    imageVector = Icons.Outlined.ChevronRight,
+                    contentDescription = null,
+                    tint = CmfPrimary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+
+        val title = workout?.type?.ifBlank { null } ?: if (fallbackDistanceKm != null) "Today's Activity" else "No workout yet"
+        val timeLabel = workout?.startTime?.atZone(ZoneId.systemDefault())
+            ?.format(DateTimeFormatter.ofPattern("hh:mm a", Locale.getDefault()))
+            ?.uppercase(Locale.getDefault())
+            ?: "--"
+        val dist = workout?.distanceKm ?: fallbackDistanceKm
+        val duration = workout?.let { formatDuration(it.durationMinutes) } ?: "--"
+        val kcal = workout?.caloriesKcal ?: fallbackKcal
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(1.dp, CardShape, ambientColor = CardShadow, spotColor = CardShadow)
+                .clip(CardShape)
+                .background(CmfSurfaceLowest)
+                .clickable(onClick = onViewAll)
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(42.dp)
-                    .clip(CircleShape)
-                    .background(iconBg),
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(CmfSurfaceContainer),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = workout.type,
-                    tint = iconTint,
-                    modifier = Modifier.size(20.dp)
-                )
+                RouteThumb()
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(CmfPrimary.copy(alpha = 0.10f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.DirectionsRun,
+                        contentDescription = null,
+                        tint = CmfPrimaryContainer,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
+            Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = workout.type,
-                    fontFamily = AppFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = TextPrimary
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = timeStr,
-                    fontFamily = AppFontFamily,
-                    fontSize = 12.sp,
-                    color = TextSecondary
-                )
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = "${workout.durationMinutes} min",
-                    fontFamily = AppFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = TextPrimary
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "${String.format("%.1f", workout.distanceKm)} km • ${workout.caloriesKcal} kcal",
-                    fontFamily = AppFontFamily,
-                    fontSize = 11.sp,
-                    color = TextSecondary
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = CmfOnSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(PillShape)
+                            .background(CmfSurfaceLow)
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = timeLabel,
+                            fontFamily = InterFontFamily,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.sp,
+                            letterSpacing = 0.4.sp,
+                            color = CmfOnSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = dist?.let { String.format(Locale.US, "%.1f", it) } ?: "--",
+                        fontFamily = HeadlineFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = CmfOnSurface
+                    )
+                    Text(
+                        text = " km",
+                        fontFamily = InterFontFamily,
+                        fontSize = 12.sp,
+                        color = CmfOnSurfaceVariant
+                    )
+                    Dot()
+                    Text(
+                        text = duration,
+                        fontFamily = HeadlineFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 18.sp,
+                        color = CmfOnSurface
+                    )
+                    Dot()
+                    Text(
+                        text = kcal?.toString() ?: "--",
+                        fontFamily = HeadlineFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 18.sp,
+                        color = CmfPrimary
+                    )
+                    Text(
+                        text = " kcal",
+                        fontFamily = InterFontFamily,
+                        fontSize = 12.sp,
+                        color = CmfOnSurfaceVariant
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-fun TextTextButton(
-    onClick: () -> Unit,
-    text: String
-) {
-    Text(
-        text = text,
-        fontFamily = AppFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 13.sp,
-        color = Color(0xFF00E676),
-        modifier = Modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null
-        ) { onClick() }
+private fun RouteThumb() {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val path = Path()
+        val w = size.width
+        val h = size.height
+        drawRoundRect(Color(0xFFE8EDE4), cornerRadius = androidx.compose.ui.geometry.CornerRadius(16.dp.toPx()))
+        drawRoundRect(Color(0xFFD7E4CC), topLeft = Offset(w * 0.08f, h * 0.12f), size = Size(w * 0.38f, h * 0.42f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()))
+        drawRoundRect(Color(0xFFCDD8C6), topLeft = Offset(w * 0.52f, h * 0.38f), size = Size(w * 0.40f, h * 0.48f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()))
+        path.moveTo(w * 0.18f, h * 0.72f)
+        path.cubicTo(w * 0.28f, h * 0.30f, w * 0.45f, h * 0.78f, w * 0.58f, h * 0.40f)
+        path.cubicTo(w * 0.70f, h * 0.12f, w * 0.82f, h * 0.55f, w * 0.88f, h * 0.28f)
+        drawPath(path, CmfPrimaryContainer, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
+    }
+}
+
+@Composable
+private fun Dot() {
+    Box(
+        modifier = Modifier
+            .padding(horizontal = 8.dp)
+            .size(4.dp)
+            .clip(CircleShape)
+            .background(CmfOutlineVariant)
     )
+}
+
+@Composable
+private fun DailyMilestoneBanner(remainingKcal: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(CardShape)
+            .background(CmfSurfaceLow)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(CmfPrimaryContainer),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.EmojiEvents,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column {
+            Text(
+                text = "DAILY MILESTONE",
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.sp,
+                letterSpacing = 0.6.sp,
+                color = CmfOnSurfaceVariant
+            )
+            Text(
+                text = if (remainingKcal > 0) {
+                    "Only $remainingKcal kcal left to close all three rings today!"
+                } else {
+                    "All three rings are closed. Outstanding work today!"
+                },
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp,
+                color = CmfOnSurface
+            )
+        }
+    }
+}
+
+private fun formatSynced(instant: Instant?): String {
+    if (instant == null) return "Not synced"
+    val mins = Duration.between(instant, Instant.now()).toMinutes()
+    return when {
+        mins < 1 -> "Synced just now"
+        mins < 60 -> "Synced ${mins}m ago"
+        else -> "Synced ${mins / 60}h ago"
+    }
+}
+
+private fun formatDuration(totalMinutes: Int): String {
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return if (hours > 0) {
+        String.format(Locale.US, "%d:%02d:00", hours, minutes)
+    } else {
+        String.format(Locale.US, "%d:%02d", totalMinutes, 0)
+    }
+}
+
+private data class Readiness(
+    val score: Int,
+    val band: String,
+    val badge: String,
+    val blurb: String,
+    val suggestion: String
+)
+
+private fun deriveReadiness(sleepScore: Int?, hr: Int?, stress: Int?): Readiness {
+    val sleepPart = sleepScore ?: 70
+    val hrPart = when {
+        hr == null -> 75
+        hr < 60 -> 95
+        hr < 70 -> 88
+        hr < 80 -> 72
+        else -> 58
+    }
+    val stressPart = when {
+        stress == null -> 80
+        stress <= 24 -> 94
+        stress <= 40 -> 80
+        stress <= 60 -> 62
+        else -> 45
+    }
+    val score = ((sleepPart * 0.45f) + (hrPart * 0.3f) + (stressPart * 0.25f)).roundToInt().coerceIn(0, 100)
+    val (band, badge) = when {
+        score >= 85 -> "High" to "READY"
+        score >= 70 -> "Steady" to "GO"
+        else -> "Low" to "REST"
+    }
+    val blurb = when {
+        score >= 85 -> "Your resting heart rate is lower than baseline and deep sleep was restorative. Great day for a high-intensity session."
+        score >= 70 -> "Recovery looks solid. Keep intensity moderate and stay hydrated through the afternoon."
+        else -> "Recovery is lagging. Prioritize easy movement, daylight, and an earlier wind-down tonight."
+    }
+    val suggestion = when {
+        score >= 85 -> "Suggested: 5km Outdoor Run"
+        score >= 70 -> "Suggested: Zone 2 Walk"
+        else -> "Suggested: Recovery Stretch"
+    }
+    return Readiness(score, band, badge, blurb, suggestion)
 }

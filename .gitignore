@@ -54,6 +54,7 @@ android/local.properties
 android/*/build/
 android/app/build/
 scratch/
+stride/
 
 
 

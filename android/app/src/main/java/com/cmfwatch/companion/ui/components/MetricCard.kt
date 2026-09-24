@@ -8,13 +8,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.cmfwatch.companion.ui.theme.DarkCardSurface
-import com.cmfwatch.companion.ui.theme.NType82FontFamily
+import com.cmfwatch.companion.ui.theme.CmfSurfaceLowest
+import com.cmfwatch.companion.ui.theme.HeadlineFontFamily
+import com.cmfwatch.companion.ui.theme.InterFontFamily
 import com.cmfwatch.companion.ui.theme.TextPrimary
 import com.cmfwatch.companion.ui.theme.TextSecondary
 
@@ -30,16 +31,10 @@ fun MetricCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(
-                brush = Brush.verticalGradient(
-                    listOf(
-                        DarkCardSurface,
-                        Color(0xFF14181D)
-                    )
-                )
-            )
-            .padding(16.dp)
+            .shadow(2.dp, RoundedCornerShape(32.dp))
+            .clip(RoundedCornerShape(32.dp))
+            .background(CmfSurfaceLowest)
+            .padding(20.dp)
     ) {
         Column {
             Row(
@@ -49,7 +44,7 @@ fun MetricCard(
             ) {
                 Text(
                     text = title.uppercase(),
-                    fontFamily = NType82FontFamily,
+                    fontFamily = InterFontFamily,
                     fontSize = 12.sp,
                     color = TextSecondary,
                     letterSpacing = 1.sp
@@ -69,16 +64,16 @@ fun MetricCard(
             ) {
                 Text(
                     text = value,
-                    fontFamily = NType82FontFamily,
-                    fontSize = 34.sp,
-                    fontWeight = FontWeight.Normal,
+                    fontFamily = HeadlineFontFamily,
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
                 if (unit.isNotEmpty()) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = unit,
-                        fontFamily = NType82FontFamily,
+                        fontFamily = InterFontFamily,
                         fontSize = 14.sp,
                         color = TextSecondary,
                         modifier = Modifier.padding(bottom = 6.dp)
@@ -90,7 +85,7 @@ fun MetricCard(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = subtitle,
-                    fontFamily = NType82FontFamily,
+                    fontFamily = InterFontFamily,
                     fontSize = 12.sp,
                     color = TextSecondary
                 )

@@ -214,9 +214,10 @@ fun HeartRateDetailScreen(
 
             Text(
                 text = "Heart Rate",
-                fontFamily = AppFontFamily,
+                fontFamily = HeadlineFontFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 32.sp,
+                fontSize = 28.sp,
+                letterSpacing = (-0.56).sp,
                 color = TextPrimary
             )
 

@@ -67,7 +67,7 @@ fun DeviceScreen(
             .background(LightBackground)
             .statusBarsPadding()
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 100.dp)
+        contentPadding = PaddingValues(top = 12.dp, bottom = 132.dp)
     ) {
         // 1. Top Bar (< Back, Options ...)
         item {
@@ -118,9 +118,10 @@ fun DeviceScreen(
                 Column(modifier = Modifier.weight(1.2f)) {
                     Text(
                         text = "CMF Watch",
-                        fontFamily = AppFontFamily,
+                        fontFamily = HeadlineFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 32.sp,
+                        fontSize = 28.sp,
+                        letterSpacing = (-0.56).sp,
                         color = TextPrimary
                     )
 
@@ -211,7 +212,7 @@ fun DeviceScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
+                    .clip(RoundedCornerShape(32.dp))
                     .background(SurfaceWhite)
                     .padding(16.dp)
             ) {
@@ -270,7 +271,7 @@ fun DeviceScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
+                    .clip(RoundedCornerShape(32.dp))
                     .background(SurfaceWhite)
             ) {
                 Column {
@@ -325,7 +326,7 @@ fun DeviceScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
+                    .clip(RoundedCornerShape(32.dp))
                     .background(SurfaceWhite)
             ) {
                 Column {

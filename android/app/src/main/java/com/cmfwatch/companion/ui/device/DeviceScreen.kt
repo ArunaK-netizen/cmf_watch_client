@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cmfwatch.companion.R
+import com.cmfwatch.companion.ble.CmfBleManager
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.domain.models.DeviceConnectionState
 import com.cmfwatch.companion.ui.theme.*
@@ -388,6 +389,7 @@ fun DeviceScreen(
                             .clip(CircleShape)
                             .bouncyClickable {
                                 isFindingWatch = true
+                                CmfBleManager.getInstance(context).findMyWatch()
                                 Toast
                                     .makeText(
                                         context,

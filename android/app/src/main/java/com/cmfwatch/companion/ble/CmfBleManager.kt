@@ -239,6 +239,7 @@ class CmfBleManager(
 
     private var userExplicitDisconnect = false
     private var lastConnectedMac: String? = null
+    private var reconnectAttemptCount = 0
 
     fun connect(macAddress: String) {
         stopScan()
@@ -306,13 +307,15 @@ class CmfBleManager(
                 Log.w(TAG, "GATT disconnected. Status: $status")
                 _connectionState.value = DeviceConnectionState.DISCONNECTED
 
-                // Auto-reconnect if link dropped unexpectedly without explicit user disconnect
+                // Auto-reconnect with exponential backoff if link dropped unexpectedly without explicit user disconnect
                 if (!userExplicitDisconnect && lastConnectedMac != null) {
                     val macToReconnect = lastConnectedMac!!
+                    reconnectAttemptCount++
+                    val backoffDelay = (reconnectAttemptCount * 5000L).coerceAtMost(60000L)
                     managerScope.launch {
-                        delay(3000)
+                        delay(backoffDelay)
                         if (!userExplicitDisconnect && _connectionState.value == DeviceConnectionState.DISCONNECTED) {
-                            Log.i(TAG, "Attempting background auto-reconnect to $macToReconnect...")
+                            Log.i(TAG, "Attempting background auto-reconnect (attempt $reconnectAttemptCount, delay ${backoffDelay}ms) to $macToReconnect...")
                             connect(macToReconnect)
                         }
                     }
@@ -626,13 +629,18 @@ class CmfBleManager(
             cmd1 == 0xFFFF && cmd2 == 0x0004 -> {
                 Log.i(TAG, "Received AUTHENTICATED_CONFIRM_REPLY (0xFFFF 0x0004). Authentication COMPLETE!")
                 _connectionState.value = DeviceConnectionState.CONNECTED_PAIRED
+                reconnectAttemptCount = 0
+                try {
+                    bluetoothGatt?.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "Could not set connection priority: ${e.message}")
+                }
                 managerScope.launch {
                     setDeviceTime()
                     delay(500)
                     fetchBattery()
                     delay(500)
-                    enableRealtimeStream()
-                    delay(1000)
+                    // Perform bulk historical sync only (do NOT keep 24/7 live push streaming active)
                     triggerSync()
                 }
             }
@@ -716,6 +724,22 @@ class CmfBleManager(
             delay(300)
             sendFrame(0x0055, 0x8001, byteArrayOf(0x01), useEncryption = true)
         }
+    }
+
+    fun disableRealtimeStream() {
+        managerScope.launch {
+            Log.i(TAG, "Disabling live realtime telemetry push stream to save battery...")
+            sendFrame(0x0053, 0x8001, byteArrayOf(0x00), useEncryption = true)
+            delay(200)
+            sendFrame(0x0056, 0x8001, byteArrayOf(0x00), useEncryption = true)
+            delay(200)
+            sendFrame(0x0055, 0x8001, byteArrayOf(0x00), useEncryption = true)
+        }
+    }
+
+    fun findMyWatch() {
+        Log.i(TAG, "Sending FIND_MY_WATCH ping command (0xFFFF 8006)...")
+        sendFrame(0xFFFF, 0x8006, byteArrayOf(0x01), useEncryption = true)
     }
 
     fun triggerSync() {

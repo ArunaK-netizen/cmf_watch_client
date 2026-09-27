@@ -36,12 +36,12 @@ class CmfBleService : Service() {
             }
         }
 
-        // Start 5-minute periodic background sampling loop
+        // Start 30-minute passive background sync loop (battery optimization)
         serviceScope.launch {
             while (isActive) {
-                delay(300_000) // 5 minutes
+                delay(1_800_000) // 30 minutes
                 if (bleManager.connectionState.value == DeviceConnectionState.CONNECTED_PAIRED) {
-                    Log.i(TAG, "Running 5-minute periodic BLE telemetry sync...")
+                    Log.i(TAG, "Running 30-minute passive BLE telemetry sync...")
                     bleManager.fetchBattery()
                     bleManager.triggerSync()
                 }

@@ -946,11 +946,13 @@ private fun ElevationSpark(modifier: Modifier = Modifier) {
 @Composable
 private fun TrainingLoadCard(load: Int, readyHours: Int) {
     val band = when {
+        load <= 0 -> "No Workouts Recorded"
         load < 120 -> "Low"
         load < 340 -> "Optimal Training Load"
         else -> "Overreaching"
     }
     val badge = when {
+        load <= 0 -> "IDLE"
         load < 120 -> "RECOVER"
         load < 340 -> "PRODUCTIVE"
         else -> "REST"
@@ -1240,6 +1242,6 @@ private fun hrZone(bpm: Int): String = when {
 }
 
 private fun deriveLoad(minutes: Int, kcal: Int): Int {
-    if (minutes <= 0 && kcal <= 0) return 80
-    return (minutes * 3 + kcal / 8).coerceIn(80, 520)
+    if (minutes <= 0 && kcal <= 0) return 0
+    return (minutes * 3 + kcal / 8).coerceIn(0, 520)
 }

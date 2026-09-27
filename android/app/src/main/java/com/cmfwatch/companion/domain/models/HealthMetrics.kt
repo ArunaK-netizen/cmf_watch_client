@@ -82,6 +82,11 @@ data class DashboardSummary(
     val lastSyncedAt: Instant?,
     val discoveredDevices: List<DiscoveredDevice> = emptyList(),
     val hrSamplesToday: List<HeartRateSample> = emptyList(),
+    val hrSamplesAll: List<HeartRateSample> = emptyList(),
     val stepIntervalsToday: List<StepInterval> = emptyList(),
-    val workoutsToday: List<SavedWorkout> = emptyList()
+    val stepIntervalsAll: List<StepInterval> = emptyList(),
+    val workoutsToday: List<SavedWorkout> = emptyList(),
+    val workoutsAll: List<SavedWorkout> = emptyList(),
+    val activeStandHours: Int = 0,
+    val latestSleepSession: SleepSession? = null
 )

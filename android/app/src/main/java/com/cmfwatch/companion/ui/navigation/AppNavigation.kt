@@ -74,7 +74,7 @@ fun AppNavigationShell(
     ) {
         if (isViewingHeartRateDetail) {
             HeartRateDetailScreen(
-                allSamples = summary.hrSamplesToday,
+                allSamples = summary.hrSamplesAll,
                 onBackClick = { isViewingHeartRateDetail = false }
             )
         } else {

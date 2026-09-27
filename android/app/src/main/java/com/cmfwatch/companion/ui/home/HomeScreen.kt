@@ -942,7 +942,7 @@ private fun ReadinessCard(readiness: Readiness, onSuggestedClick: () -> Unit) {
                         color = CmfOnSurfaceVariant
                     )
                     Text(
-                        text = "Score: ${readiness.score} · ${readiness.band}",
+                        text = if (readiness.score != null) "Score: ${readiness.score} · ${readiness.band}" else "Score: -- · ${readiness.band}",
                         fontFamily = HeadlineFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
@@ -1255,7 +1255,7 @@ private fun formatDuration(totalMinutes: Int): String {
 }
 
 private data class Readiness(
-    val score: Int,
+    val score: Int?,
     val band: String,
     val badge: String,
     val blurb: String,
@@ -1263,22 +1263,45 @@ private data class Readiness(
 )
 
 private fun deriveReadiness(sleepScore: Int?, hr: Int?, stress: Int?): Readiness {
-    val sleepPart = sleepScore ?: 70
-    val hrPart = when {
-        hr == null -> 75
-        hr < 60 -> 95
-        hr < 70 -> 88
-        hr < 80 -> 72
-        else -> 58
+    if (sleepScore == null && hr == null && stress == null) {
+        return Readiness(
+            score = null,
+            band = "--",
+            badge = "NO DATA",
+            blurb = "No health telemetry recorded for today yet. Wear your watch to track recovery and readiness.",
+            suggestion = "Wear watch to track readiness"
+        )
     }
-    val stressPart = when {
-        stress == null -> 80
-        stress <= 24 -> 94
-        stress <= 40 -> 80
-        stress <= 60 -> 62
-        else -> 45
+
+    var weightedSum = 0f
+    var weightTotal = 0f
+
+    if (sleepScore != null) {
+        weightedSum += sleepScore * 0.45f
+        weightTotal += 0.45f
     }
-    val score = ((sleepPart * 0.45f) + (hrPart * 0.3f) + (stressPart * 0.25f)).roundToInt().coerceIn(0, 100)
+    if (hr != null) {
+        val hrPart = when {
+            hr < 60 -> 95
+            hr < 70 -> 88
+            hr < 80 -> 72
+            else -> 58
+        }
+        weightedSum += hrPart * 0.30f
+        weightTotal += 0.30f
+    }
+    if (stress != null) {
+        val stressPart = when {
+            stress <= 24 -> 94
+            stress <= 40 -> 80
+            stress <= 60 -> 62
+            else -> 45
+        }
+        weightedSum += stressPart * 0.25f
+        weightTotal += 0.25f
+    }
+
+    val score = (weightedSum / weightTotal).roundToInt().coerceIn(0, 100)
     val (band, badge) = when {
         score >= 85 -> "High" to "READY"
         score >= 70 -> "Steady" to "GO"

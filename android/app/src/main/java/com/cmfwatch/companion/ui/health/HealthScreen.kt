@@ -109,7 +109,7 @@ fun HealthScreen(
     val context = LocalContext.current
     var range by remember { mutableStateOf(VitalsRange.WEEK) }
 
-    val samples = summary.hrSamplesToday
+    val samples = if (range == VitalsRange.DAY) summary.hrSamplesToday else summary.hrSamplesAll
     val bars = remember(samples, range) { buildHrBars(samples, range) }
     val peak = samples.maxByOrNull { it.bpm }
     val floor = samples.minByOrNull { it.bpm }
@@ -203,6 +203,7 @@ fun HealthScreen(
 
             item {
                 SleepArchitectureCard(
+                    session = summary.latestSleepSession,
                     sleepMinutes = sleepMinutes,
                     sleepScore = sleepScore,
                     onClick = onSleepClick
@@ -551,6 +552,7 @@ private fun RowScope.ExtremaTile(
 
 @Composable
 private fun SleepArchitectureCard(
+    session: com.cmfwatch.companion.domain.models.SleepSession?,
     sleepMinutes: Int?,
     sleepScore: Int?,
     onClick: () -> Unit
@@ -629,11 +631,23 @@ private fun SleepArchitectureCard(
             }
         }
 
-        val hasSleep = sleepMinutes != null && sleepMinutes > 0
-        val deep = if (hasSleep) 0.21f else 0.08f
-        val core = if (hasSleep) 0.54f else 0.08f
-        val rem = if (hasSleep) 0.18f else 0.08f
-        val awake = if (hasSleep) 0.07f else 0.08f
+        val hasEpochs = session != null && session.epochs.isNotEmpty()
+        val totalSec = if (hasEpochs) (session!!.totalSleepMinutes * 60).toFloat().coerceAtLeast(1f) else 1f
+
+        val deepSec = if (hasEpochs) session!!.epochs.filter { it.stage == com.cmfwatch.companion.domain.models.SleepStage.DEEP }.sumOf { it.durationMinutes * 60 } else 0
+        val coreSec = if (hasEpochs) session!!.epochs.filter { it.stage == com.cmfwatch.companion.domain.models.SleepStage.LIGHT }.sumOf { it.durationMinutes * 60 } else 0
+        val remSec = if (hasEpochs) session!!.epochs.filter { it.stage == com.cmfwatch.companion.domain.models.SleepStage.REM }.sumOf { it.durationMinutes * 60 } else 0
+        val awakeSec = if (hasEpochs) session!!.epochs.filter { it.stage == com.cmfwatch.companion.domain.models.SleepStage.AWAKE }.sumOf { it.durationMinutes * 60 } else 0
+
+        val deep = if (hasEpochs) (deepSec / totalSec).coerceIn(0.05f, 1f) else 0.08f
+        val core = if (hasEpochs) (coreSec / totalSec).coerceIn(0.05f, 1f) else 0.08f
+        val rem = if (hasEpochs) (remSec / totalSec).coerceIn(0.05f, 1f) else 0.08f
+        val awake = if (hasEpochs) (awakeSec / totalSec).coerceIn(0.05f, 1f) else 0.08f
+
+        val deepText = if (hasEpochs) formatMins(deepSec / 60) else (sleepMinutes?.let { formatMins((it * 0.21f).roundToInt()) } ?: "--")
+        val coreText = if (hasEpochs) formatMins(coreSec / 60) else (sleepMinutes?.let { formatMins((it * 0.54f).roundToInt()) } ?: "--")
+        val remText = if (hasEpochs) formatMins(remSec / 60) else (sleepMinutes?.let { formatMins((it * 0.18f).roundToInt()) } ?: "--")
+        val awakeText = if (hasEpochs) formatMins(awakeSec / 60) else (sleepMinutes?.let { formatMins((it * 0.07f).roundToInt()) } ?: "--")
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
@@ -651,10 +665,10 @@ private fun SleepArchitectureCard(
                 StageSeg(awake, CmfOutlineVariant)
             }
             Row(modifier = Modifier.fillMaxWidth()) {
-                StageLegend("Deep", CmfSecondaryContainer, sleepMinutes?.let { formatMins((it * 0.21f).roundToInt()) } ?: "--")
-                StageLegend("Core", CmfSecondary, sleepMinutes?.let { formatMins((it * 0.54f).roundToInt()) } ?: "--")
-                StageLegend("REM", CmfSecondaryFixedDim, sleepMinutes?.let { formatMins((it * 0.18f).roundToInt()) } ?: "--")
-                StageLegend("Awake", CmfOutlineVariant, sleepMinutes?.let { formatMins((it * 0.07f).roundToInt()) } ?: "--")
+                StageLegend("Deep", CmfSecondaryContainer, deepText)
+                StageLegend("Core", CmfSecondary, coreText)
+                StageLegend("REM", CmfSecondaryFixedDim, remText)
+                StageLegend("Awake", CmfOutlineVariant, awakeText)
             }
         }
 

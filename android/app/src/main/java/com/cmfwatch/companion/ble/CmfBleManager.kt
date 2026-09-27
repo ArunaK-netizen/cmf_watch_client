@@ -91,6 +91,12 @@ class CmfBleManager(
     private val _stressFlow = MutableSharedFlow<StressSample>(extraBufferCapacity = 64)
     val stressFlow: SharedFlow<StressSample> = _stressFlow.asSharedFlow()
 
+    private val _sleepFlow = MutableSharedFlow<com.cmfwatch.companion.domain.models.SleepSession>(extraBufferCapacity = 64)
+    val sleepFlow: SharedFlow<com.cmfwatch.companion.domain.models.SleepSession> = _sleepFlow.asSharedFlow()
+
+    private val _workoutFlow = MutableSharedFlow<com.cmfwatch.companion.storage.SavedWorkout>(extraBufferCapacity = 64)
+    val workoutFlow: SharedFlow<com.cmfwatch.companion.storage.SavedWorkout> = _workoutFlow.asSharedFlow()
+
     private val frameAssembler = FrameAssembler()
     private var authKey: ByteArray? = authKeyHex?.let { parseHexKey(it) } ?: loadStoredAuthKey()
     private var sessionKey: ByteArray? = null
@@ -686,6 +692,24 @@ class CmfBleManager(
                 val interval = TelemetryDecoders.decodeStepInterval(payload)
                 if (interval != null) {
                     managerScope.launch { _stepFlow.emit(interval) }
+                }
+            }
+
+            // SLEEP_DATA (0x0058)
+            cmd1 == 0x0058 -> {
+                val session = TelemetryDecoders.decodeSleepData(payload)
+                if (session != null) {
+                    managerScope.launch { _sleepFlow.emit(session) }
+                    Log.i(TAG, "Decoded Sleep Session: ${session.totalSleepMinutes} mins")
+                }
+            }
+
+            // WORKOUT_SUMMARY (0x0057 or 0x0160)
+            cmd1 == 0x0057 || cmd1 == 0x0160 -> {
+                val workout = TelemetryDecoders.decodeWorkoutSummary(payload)
+                if (workout != null) {
+                    managerScope.launch { _workoutFlow.emit(workout) }
+                    Log.i(TAG, "Decoded Workout Summary: ${workout.type} (${workout.durationMinutes} mins)")
                 }
             }
 

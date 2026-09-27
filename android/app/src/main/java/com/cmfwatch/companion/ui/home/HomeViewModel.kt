@@ -37,26 +37,44 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             lastSyncedAt = null,
             discoveredDevices = emptyList(),
             hrSamplesToday = emptyList(),
-            workoutsToday = emptyList()
+            hrSamplesAll = emptyList(),
+            stepIntervalsToday = emptyList(),
+            stepIntervalsAll = emptyList(),
+            workoutsToday = emptyList(),
+            workoutsAll = emptyList(),
+            activeStandHours = 0,
+            latestSleepSession = null
         )
     )
     val uiState: StateFlow<DashboardSummary> = _uiState.asStateFlow()
 
     init {
-        // Load initial persistent snapshots & local telemetry history (filtered by today's date)
+        // Load initial persistent snapshots & local telemetry history
         val cached = snapshotStore.load()
-        val savedHR = telemetryStore.getHeartRateSamplesToday()
-        val savedSteps = telemetryStore.getStepIntervalsToday()
-        val savedWorkouts = telemetryStore.getSavedWorkouts()
+        val allHR = telemetryStore.getHeartRateSamples()
+        val todayHR = telemetryStore.getHeartRateSamplesToday()
+        val allSteps = telemetryStore.getStepIntervals()
+        val todaySteps = telemetryStore.getStepIntervalsToday()
+        val allWorkouts = telemetryStore.getSavedWorkouts()
+        val todayWorkouts = telemetryStore.getSavedWorkoutsToday()
+        val latestSleep = telemetryStore.getLatestSleepSession()
+        val stands = telemetryStore.computeStandHoursToday()
 
-        val initialBpm = savedHR.lastOrNull()?.bpm ?: cached.latestHeartRate
+        val initialBpm = todayHR.lastOrNull()?.bpm ?: cached.latestHeartRate
+        val sleepMins = latestSleep?.totalSleepMinutes ?: cached.lastSleepMinutes
 
         _uiState.value = cached.copy(
             latestHeartRate = initialBpm,
+            lastSleepMinutes = sleepMins,
             connectionState = bleManager.connectionState.value,
-            hrSamplesToday = savedHR,
-            stepIntervalsToday = savedSteps,
-            workoutsToday = savedWorkouts
+            hrSamplesToday = todayHR,
+            hrSamplesAll = allHR,
+            stepIntervalsToday = todaySteps,
+            stepIntervalsAll = allSteps,
+            workoutsToday = todayWorkouts,
+            workoutsAll = allWorkouts,
+            activeStandHours = stands,
+            latestSleepSession = latestSleep
         )
 
         // Observe Connection State & Auto-save MAC
@@ -88,11 +106,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             bleManager.heartRateFlow.collect { sample ->
                 telemetryStore.saveHeartRateSample(sample)
-                val allHR = telemetryStore.getHeartRateSamples()
+                val allHRList = telemetryStore.getHeartRateSamples()
+                val todayHRList = telemetryStore.getHeartRateSamplesToday()
 
                 val updated = _uiState.value.copy(
                     latestHeartRate = sample.bpm,
-                    hrSamplesToday = allHR,
+                    hrSamplesToday = todayHRList,
+                    hrSamplesAll = allHRList,
                     lastSyncedAt = Instant.now()
                 )
                 _uiState.value = updated
@@ -104,7 +124,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             bleManager.stepFlow.collect { step ->
                 telemetryStore.saveStepInterval(step)
-                val allSteps = telemetryStore.getStepIntervals()
+                val allStepList = telemetryStore.getStepIntervals()
+                val todayStepList = telemetryStore.getStepIntervalsToday()
+                val standsCount = telemetryStore.computeStandHoursToday()
+
                 val newSteps = (_uiState.value.todaySteps ?: 0) + step.steps
                 val newDist = (_uiState.value.todayDistanceKm ?: 0.0f) + (step.distanceMeters / 1000.0f)
                 val newKcal = (_uiState.value.todayCaloriesKcal ?: 0) + step.caloriesKcal.toInt()
@@ -113,7 +136,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     todaySteps = newSteps,
                     todayDistanceKm = newDist,
                     todayCaloriesKcal = newKcal,
-                    stepIntervalsToday = allSteps,
+                    stepIntervalsToday = todayStepList,
+                    stepIntervalsAll = allStepList,
+                    activeStandHours = standsCount,
                     lastSyncedAt = Instant.now()
                 )
                 _uiState.value = updated
@@ -138,6 +163,37 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             bleManager.stressFlow.collect { sample ->
                 val updated = _uiState.value.copy(
                     latestStressScore = sample.score,
+                    lastSyncedAt = Instant.now()
+                )
+                _uiState.value = updated
+                snapshotStore.save(updated)
+            }
+        }
+
+        // Observe Sleep Telemetry
+        viewModelScope.launch {
+            bleManager.sleepFlow.collect { session ->
+                telemetryStore.saveSleepSession(session)
+                val updated = _uiState.value.copy(
+                    lastSleepMinutes = session.totalSleepMinutes,
+                    latestSleepSession = session,
+                    lastSyncedAt = Instant.now()
+                )
+                _uiState.value = updated
+                snapshotStore.save(updated)
+            }
+        }
+
+        // Observe Workout Telemetry
+        viewModelScope.launch {
+            bleManager.workoutFlow.collect { workout ->
+                telemetryStore.saveWorkout(workout)
+                val todayW = telemetryStore.getSavedWorkoutsToday()
+                val allW = telemetryStore.getSavedWorkouts()
+
+                val updated = _uiState.value.copy(
+                    workoutsToday = todayW,
+                    workoutsAll = allW,
                     lastSyncedAt = Instant.now()
                 )
                 _uiState.value = updated

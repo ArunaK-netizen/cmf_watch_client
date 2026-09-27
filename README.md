@@ -1,33 +1,49 @@
-# CMF Watch Client (`cmf-watch-client`)
+# ⌚ CMF Watch Client & Companion Ecosystem
 
-[![Python Version](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Code Style: PEP8](https://img.shields.io/badge/code%20style-pep8-green.svg)](https://www.python.org/dev/peps/pep-0008/)
+[![Android](https://img.shields.io/badge/Android-8.0+-3DDC84?style=for-the-badge&logo=android&logoColor=white)](android/)
+[![Kotlin](https://img.shields.io/badge/Kotlin-100%25-00A88E?style=for-the-badge&logo=kotlin&logoColor=white)](android/)
+[![Python Version](https://img.shields.io/badge/Python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue.svg?style=for-the-badge&logo=python&logoColor=white)](cmf_watch_client/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
-**`cmf-watch-client`** is a production-grade Python client, BLE driver, and reverse-engineered protocol library for **CMF by Nothing** smartwatches (including **CMF Watch Pro 2** and **CMF Watch Pro**).
+An open-source, offline-first companion application and reverse-engineered BLE protocol client for **CMF by Nothing** smartwatches (**CMF Watch Pro 2**, **CMF Watch Pro**, and **CMF Watch 3 Pro**).
 
-It enables direct, local, encrypted Bluetooth Low Energy communication with your smartwatch—allowing you to pair your device, synchronize historical health/workout telemetry, decode metrics, and export data without relying on Nothing's cloud backend.
+This project provides a complete ecosystem: a **native Android companion app** with a clean, clinical light-themed interface, and a **production-grade Python BLE driver & CLI** for direct local pairing, binary telemetry decoding, and cloud-free health data management.
+
+---
+
+## 📱 Screenshots
+
+<p align="center">
+  <img src="docs/images/vitals_dashboard.png" width="31%" alt="Today Dashboard">
+  &nbsp;
+  <img src="docs/images/vitals_detail.png" width="31%" alt="Clinical Vitals & Sleep">
+  &nbsp;
+  <img src="docs/images/workout_sync.png" width="31%" alt="Workouts & Watch Sync">
+</p>
 
 ---
 
 ## 🌟 Key Features
 
-- **Direct BLE Communication**: Connects directly to the watch peripheral over GATT (`0xFFF0`, `77D4E67C`) via `Bleak`.
-- **First-Time Pairing**: Automated shell AT channel pairing (`AT GETSECRET`), challenge verification (`SHA256(rnd || secret)`), and long-term `authkey` derivation.
-- **Encrypted Session Handshake**: AES-128-CBC encryption with fixed IV (`5051525354555657606162636465665A`), dynamic `sessionKey` derivation via nonce exchange, and `0xF5` 11-byte frame reassembly.
-- **Telemetry Decoders**: Decodes raw binary stream buffers into normalized **Pydantic v2** models:
-  - 🏃 **Activity & Steps**: Timestamped step counts, distance (meters), and calories (kcal).
-  - ❤️ **Heart Rate**: Auto-monitoring, manual spot checks, workout heart rates, and daily resting HR.
-  - 🩸 **Blood Oxygen (SpO₂)**: Oxygen saturation level percentages.
-  - 🧘 **Stress Levels**: Stress index scores (1–99) categorized into Relaxed, Normal, Medium, and High.
-  - 🌙 **Sleep Telemetry**: Sleep session headers with total Deep, Light, REM, and Awake durations + ordered stage intervals.
-  - 🚴 **Workouts & GPS**: Active workout summaries and 12-byte coordinate GPS tracks.
-- **Extensible Storage**: Pluggable storage architecture (`BaseStorageExporter`) with built-in `JSONStorageExporter`.
-- **CLI Utility**: Command-line tool (`cmf-watch-client`) with subcommands `scan`, `pair`, and `sync`.
+### 📱 Native Android Companion App (`android/`)
+- **Clinical Light Design System**: Clean off-white canvas with card-based surfaces, custom typography (Plus Jakarta Sans & Inter), and high-visibility status indicators.
+- **Activity Rings & Today View**: Real-time tracking of Move, Exercise, and Stand goals, Heart Rate (BPM), Sleep summary, and Daily Readiness scoring (e.g. 92 High).
+- **Clinical Vitals & Sleep Architecture**: Deep analysis of sleep stages (Deep, Core, REM, Awake), Sleep HRV (ms RMSSD), Respiratory rate, Skin temperature deviation, SpO₂ saturation, and VO₂ Max.
+- **Heart Rate & Variability Analysis**: Daily resting average, Dynamic Zone Analysis bar charts, Daily Floor, and Cardio Peak detection.
+- **Workouts & GPS Route Maps**: Weekly training volume, active session telemetry (pace, calories burned, duration), and verified outdoor run maps with elevation profiles.
+- **Device Management & BLE Sync**: Real-time CMF Watch Pro 2 BLE 5.3 connection status, firmware version, battery telemetry, haptic settings, and Find My Watch integration.
+- **Offline & Private**: Local-first storage powered by Android Room SQLite—zero mandatory cloud sync or third-party data tracking.
+
+### 🐍 Python BLE Client & Protocol Engine (`cmf_watch_client/`)
+- **Direct GATT BLE Driver**: Local communication over custom GATT services via `Bleak`.
+- **First-Time Pairing**: Automated shell AT channel challenge exchange (`AT GETSECRET`) and long-term `authkey` derivation (`SHA256`).
+- **AES-128-CBC Encryption**: Dynamic `sessionKey` derivation, fixed IV cipher, CRC32 verification, and `0xF5` 11-byte frame reassembly.
+- **Binary Telemetry Decoders**: Normalizes raw byte streams into verified **Pydantic v2** models for steps, heart rate, sleep, SpO₂, stress, and workout sessions.
+- **Command Line Utility**: CLI tools (`cmf-watch-client scan / pair / sync`) for easy terminal workflow and background scripting.
 
 ---
 
-## 📱 Supported Watch Models
+## ⌚ Supported Watch Models
 
 | Device Model | Advertised Name Filter | Status | MCU / Platform |
 |---|---|---|---|
@@ -37,49 +53,81 @@ It enables direct, local, encrypted Bluetooth Low Energy communication with your
 
 ---
 
-## 🚀 Installation
+## 🏗 Project Architecture
 
-Install from local source:
+```text
+ ┌─────────────────────────────────────────────────────────────────────────────┐
+ │                    PYTHON CMF WATCH CLIENT (cmf_watch_client)              │
+ │  - Primary Protocol Source of Truth & Reverse-Engineering Engine           │
+ │  - Asynchronous Bleak GATT Client, Decoders, CLI & Experiment Recorder     │
+ └──────────────────────────────────────┬──────────────────────────────────────┘
+                                        │
+                         Shared Protocol Specification
+                                        │
+ ┌──────────────────────────────────────▼──────────────────────────────────────┐
+ │                     ANDROID COMPANION APPLICATION (android/)                │
+ │  - Consumer Companion App & Background Telemetry Sync Host                  │
+ │  - Native Android BluetoothGatt, Room SQLite DB, Jetpack Compose UI        │
+ └─────────────────────────────────────────────────────────────────────────────┘
+```
 
+For detailed architectural specifications and design standards, see:
+- 📄 [System Architecture Specification](docs/ARCHITECTURE.md)
+- 📄 [Android App Specifications](docs/app/ARCHITECTURE.md)
+
+---
+
+## 🚀 Getting Started
+
+### 📱 Running the Android Companion App
+
+The Android app source is located in the [`android/`](android/) directory.
+
+#### Prerequisites
+- JDK 17+
+- Android SDK (API level 36 target, minimum API 26 / Android 8.0)
+
+#### Build and Install
 ```bash
-git clone https://github.com/joshuapassos/CMF-Watch-Pro-2-BLE-Protocol.git
-cd CMF-Watch-Pro-2-BLE-Protocol
+cd android
+./gradlew assembleDebug
+```
+The compiled APK will be generated at `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+---
+
+### 🐍 Using the Python Client & CLI
+
+The Python package is located in the root / [`cmf_watch_client/`](cmf_watch_client/) directory.
+
+#### Installation
+```bash
+git clone https://github.com/ArunaK-netizen/cmf_watch_client.git
+cd cmf_watch_client
 pip install -e .
 ```
 
-For development and test dependencies:
-
+For development & testing:
 ```bash
 pip install -e ".[dev]"
 ```
 
----
+#### CLI Quickstart
 
-## 💻 Command Line Interface (CLI)
+1. **Scan for Watch**:
+   ```bash
+   cmf-watch-client scan
+   ```
+2. **Pair & Derive Auth Keys**:
+   ```bash
+   cmf-watch-client pair
+   ```
+3. **Sync Health Telemetry**:
+   ```bash
+   cmf-watch-client sync --out health_sync_latest.json
+   ```
 
-The package installs the `cmf-watch-client` command line tool (also accessible via `python -m cmf_watch_client.cli`).
-
-### 1. Scan for Nearby Smartwatches
-```bash
-cmf-watch-client scan
-```
-Scans for advertising watches over BLE and saves the discovered MAC address to `cmf_config.json`.
-
-### 2. Pair Device (First-Time Only)
-```bash
-cmf-watch-client pair
-```
-Executes the `AT GETSECRET` shell pairing exchange, verifies the watch challenge signature, derives the 16-byte `authkey`, and saves credentials to `cmf_config.json`.
-
-### 3. Synchronize Telemetry Data
-```bash
-cmf-watch-client sync --out health_sync_latest.json
-```
-Establishes an encrypted BLE session, initializes watch time, requests historical telemetry streams (`ACTIVITY_FETCH_1/2`), decodes metrics, and exports a JSON report.
-
----
-
-## 🐍 Python API Usage
+#### Python API Example
 
 ```python
 import asyncio
@@ -103,12 +151,12 @@ async def main():
     # 4. Synchronize Health Telemetry
     telemetry = await client.sync_health_data(timeout=20.0)
 
-    # 5. Process Pydantic Metric Models
+    # 5. Process Metrics
     print(f"Decoded {len(telemetry['activity'])} activity interval samples.")
     print(f"Decoded {len(telemetry['heart_rate'])} heart rate samples.")
     print(f"Decoded {len(telemetry['sleep'])} sleep sessions.")
 
-    # 6. Export to Storage Exporter
+    # 6. Export Data
     exporter = JSONStorageExporter("latest_health_export.json")
     exporter.export(telemetry, {"mac_address": mac_address, "battery_level": battery_level})
 
@@ -120,49 +168,36 @@ if __name__ == "__main__":
 
 ---
 
-## 🛠️ Protocol Architecture Overview
+## 🛠 Reverse Engineering Specifications
 
-For full technical specifications, inspect the [`docs/`](docs/) directory:
+Complete documentation on protocol reverse engineering and hardware packet structures:
 
-- [docs/protocol-spec.md](docs/protocol-spec.md): GATT service UUIDs, pairing sequence, and session handshake.
-- [docs/packets-and-opcodes.md](docs/packets-and-opcodes.md): `0xF5` 11-byte frame header layout and opcode pair reference.
-- [docs/crypto-spec.md](docs/crypto-spec.md): AES-128-CBC fixed IV cipher, CRC32 LE, `authkey`, and `sessionKey` formulas.
-- [docs/health-decoders-spec.md](docs/health-decoders-spec.md): Binary Little-Endian metric payload encodings.
-- [docs/apk-reversing-notes.md](docs/apk-reversing-notes.md): Static reverse-engineering analysis of Nothing X (v3.7.3).
+- 📖 [GATT Protocol & Pairing Spec](docs/protocol-spec.md)
+- 📖 [Packets & Opcode Registry](docs/packets-and-opcodes.md)
+- 📖 [Crypto & Cipher Spec](docs/crypto-spec.md)
+- 📖 [Health Telemetry Decoders Spec](docs/health-decoders-spec.md)
+- 📖 [APK Reverse-Engineering Notes](docs/apk-reversing-notes.md)
 
 ---
 
 ## 🧪 Testing
 
-Run the automated unit test suite with synthetic test vectors:
+Run automated tests for protocol framing, cryptography, decoders, and storage exporters:
 
 ```bash
-python -m pytest tests/
+pytest tests/
 ```
 
 ---
 
 ## 🔒 Security & Privacy
 
-- **Zero Secret Commits**: Real MAC addresses, secret keys, and personal health data are strictly excluded via `.gitignore`.
-- **Sanitized Fixtures**: Unit tests operate exclusively on synthetic binary test vectors (`tests/fixtures/sample_payloads.py`).
-
-See [SECURITY.md](SECURITY.md) for full privacy policy details.
-
----
-
-## 📚 References & Prior Art
-
-This project acknowledges prior reverse-engineering research and open-source contributions:
-1. **CMF Watch Pro 2 BLE Protocol Repository**: [joshuapassos/CMF-Watch-Pro-2-BLE-Protocol](https://github.com/joshuapassos/CMF-Watch-Pro-2-BLE-Protocol)
-2. **fmc_go — Independent Go Implementation**: [freethinkel/fmc_go](https://github.com/freethinkel/fmc_go)
-3. **Gadgetbridge CMF Implementation**: `nodomain.freeyourgadget.gadgetbridge`
-4. **CMF Watch Firmware RE**: [whatotter/cmf-watch-firmware](https://github.com/whatotter/cmf-watch-firmware)
-5. **Nothing X Smartwatch App RE Write-up**: [Ambraglow Blog](https://ambraglow.org/blog/nothing-x/a-look-into-the-nothing-x-smartwatch-app/)
-6. **Official Nothing Product Data Info**: [Nothing Product Data Information](https://nothing.tech/pages/product-data-information)
+- **100% Local Processing**: No personal data or health telemetry is uploaded to external third-party servers.
+- **Sanitized Repositories**: Credentials, tokens, and hardware MAC addresses are kept out of git history.
+- See [SECURITY.md](SECURITY.md) for vulnerability reporting and security policies.
 
 ---
 
 ## 📄 License
 
-This project is open-source software licensed under the [MIT License](LICENSE).
+Distributed under the [MIT License](LICENSE).

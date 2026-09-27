@@ -43,10 +43,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<DashboardSummary> = _uiState.asStateFlow()
 
     init {
-        // Load initial persistent snapshots & local telemetry history
+        // Load initial persistent snapshots & local telemetry history (filtered by today's date)
         val cached = snapshotStore.load()
-        val savedHR = telemetryStore.getHeartRateSamples()
-        val savedSteps = telemetryStore.getStepIntervals()
+        val savedHR = telemetryStore.getHeartRateSamplesToday()
+        val savedSteps = telemetryStore.getStepIntervalsToday()
         val savedWorkouts = telemetryStore.getSavedWorkouts()
 
         val initialBpm = savedHR.lastOrNull()?.bpm ?: cached.latestHeartRate

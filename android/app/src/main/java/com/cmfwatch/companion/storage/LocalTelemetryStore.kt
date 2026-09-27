@@ -54,6 +54,12 @@ class LocalTelemetryStore(context: Context) {
         return list
     }
 
+    fun getHeartRateSamplesToday(): List<HeartRateSample> {
+        val today = java.time.LocalDate.now()
+        val zone = java.time.ZoneId.systemDefault()
+        return getHeartRateSamples().filter { it.timestamp.atZone(zone).toLocalDate() == today }
+    }
+
     fun saveStepInterval(interval: StepInterval) {
         val list = getStepIntervals().toMutableList()
         list.add(interval)
@@ -89,6 +95,12 @@ class LocalTelemetryStore(context: Context) {
             e.printStackTrace()
         }
         return list
+    }
+
+    fun getStepIntervalsToday(): List<StepInterval> {
+        val today = java.time.LocalDate.now()
+        val zone = java.time.ZoneId.systemDefault()
+        return getStepIntervals().filter { it.timestamp.atZone(zone).toLocalDate() == today }
     }
 
     fun getSavedWorkouts(): List<SavedWorkout> {

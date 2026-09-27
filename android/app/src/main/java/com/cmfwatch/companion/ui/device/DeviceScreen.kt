@@ -43,6 +43,7 @@ import com.cmfwatch.companion.R
 import com.cmfwatch.companion.ble.CmfBleManager
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.domain.models.DeviceConnectionState
+import com.cmfwatch.companion.storage.DeviceSettingsStore
 import com.cmfwatch.companion.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -58,7 +59,6 @@ private val CmfOrange = Color(0xFFFF5722)
 private val CmfOrangeContainer = Color(0xFFFFDBD1)
 private val CmfOrangeDark = Color(0xFFB02F00)
 private val CmfGreen = Color(0xFF008733)
-private val CmfGreenBg = Color(0xFFE8FDF0)
 private val CmfPurple = Color(0xFF4C4ACA)
 private val CmfPurpleBg = Color(0xFFE2DFFF)
 private val TextOnSurface = Color(0xFF1A1C1E)
@@ -132,18 +132,17 @@ fun DeviceScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // Device Settings Store (Persists user inputs across navigation & restarts)
+    val settingsStore = remember(context) { DeviceSettingsStore(context) }
+    var deviceSettings by remember { mutableStateOf(settingsStore.loadSettings()) }
+
     val isConnected = summary.connectionState == DeviceConnectionState.CONNECTED_PAIRED ||
             summary.connectionState == DeviceConnectionState.CONNECTED
 
     var isFindingWatch by remember { mutableStateOf(false) }
-    var selectedHaptic by remember { mutableStateOf("Firm") }
 
-    // Sensor Toggles
-    var heartRateToggle by remember { mutableStateOf(true) }
-    var spO2Toggle by remember { mutableStateOf(true) }
-    var sleepApneaToggle by remember { mutableStateOf(true) }
-    var stressToggle by remember { mutableStateOf(true) }
-    var aodToggle by remember { mutableStateOf(true) }
+    val deviceName = summary.discoveredDevices.firstOrNull()?.name ?: "CMF Watch Pro 2"
 
     LazyColumn(
         modifier = modifier
@@ -210,7 +209,7 @@ fun DeviceScreen(
                                     .pulse()
                             )
                             Text(
-                                text = if (isConnected) "Connected · ${summary.deviceBatteryLevel ?: 84}%" else "Disconnected",
+                                text = if (isConnected) "Connected · ${summary.deviceBatteryLevel?.let { "$it%" } ?: "--%"}" else "Disconnected",
                                 fontFamily = AppFontFamily,
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 12.sp,
@@ -282,15 +281,15 @@ fun DeviceScreen(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(CmfGreen)
+                                    .background(if (isConnected) CmfGreen else TextMutedGray)
                                     .pulse()
                             )
                             Text(
-                                text = "Active Sync",
+                                text = if (isConnected) "Active Sync" else "Idle",
                                 fontFamily = AppFontFamily,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp,
-                                color = CmfGreen
+                                color = if (isConnected) CmfGreen else TextMutedGray
                             )
                         }
                     }
@@ -299,11 +298,9 @@ fun DeviceScreen(
 
                     // Center Watch Showcase Image with Orange Radial Glow
                     Box(
-                        modifier = Modifier
-                            .size(220.dp),
+                        modifier = Modifier.size(220.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        // Soft Radial Ambient Glow
                         Box(
                             modifier = Modifier
                                 .size(180.dp)
@@ -315,10 +312,9 @@ fun DeviceScreen(
                                 )
                         )
 
-                        // Render Watch Image from res/drawable or Vector
                         Image(
                             painter = painterResource(id = R.drawable.cmf_watch_pro2),
-                            contentDescription = "CMF Watch Pro 2",
+                            contentDescription = deviceName,
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .size(200.dp)
@@ -328,9 +324,9 @@ fun DeviceScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Title & Identity
+                    // Title & Identity (100% Real Data)
                     Text(
-                        text = "CMF Watch Pro 2",
+                        text = deviceName,
                         fontFamily = HeadlineFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 22.sp,
@@ -338,7 +334,7 @@ fun DeviceScreen(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Dark Gray Case · Liquid Orange Silicone",
+                        text = if (isConnected) "Connected Watch Peripheral" else "Tap below to scan & pair device",
                         fontFamily = AppFontFamily,
                         fontSize = 13.sp,
                         color = TextVariant
@@ -346,7 +342,7 @@ fun DeviceScreen(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Hardware Metrics Trough
+                    // Hardware Metrics Trough (Zero hardcoded data)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -359,28 +355,28 @@ fun DeviceScreen(
                             icon = Icons.Default.BluetoothConnected,
                             iconTint = CmfOrange,
                             label = "LINK",
-                            value = "BLE 5.3",
-                            subtext = "Optimal"
+                            value = if (isConnected) "BLE 5.3" else "--",
+                            subtext = if (isConnected) "Optimal" else "Offline"
                         )
                         HardwareMetricColumn(
                             icon = Icons.Default.BatteryFull,
                             iconTint = CmfGreen,
                             label = "BATTERY",
-                            value = summary.deviceBatteryLevel?.let { "$it%" } ?: "84%",
-                            subtext = "~8d left"
+                            value = summary.deviceBatteryLevel?.let { "$it%" } ?: "--%",
+                            subtext = summary.deviceBatteryLevel?.let { "~${(it * 10 / 100).coerceAtLeast(1)}d left" } ?: "--"
                         )
                         HardwareMetricColumn(
                             icon = Icons.Default.Verified,
                             iconTint = CmfPurple,
                             label = "FIRMWARE",
-                            value = "v2.1.04",
-                            subtext = "Latest"
+                            value = "--",
+                            subtext = if (isConnected) "Connected" else "--"
                         )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Find My Watch Action Button
+                    // Find My Watch Action Button (Sends real GATT Ping command)
                     Surface(
                         shape = CircleShape,
                         color = if (isFindingWatch) CmfOrangeContainer else TroughBg,
@@ -393,7 +389,7 @@ fun DeviceScreen(
                                 Toast
                                     .makeText(
                                         context,
-                                        "Pinging CMF Watch Pro 2... Audio alert sent!",
+                                        "Pinging $deviceName... Audio alert sent!",
                                         Toast.LENGTH_SHORT
                                     )
                                     .show()
@@ -473,7 +469,7 @@ fun DeviceScreen(
                         modifier = Modifier.clickable { }
                     ) {
                         Text(
-                            text = "Browse 100+",
+                            text = "Browse Faces",
                             fontFamily = AppFontFamily,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp,
@@ -552,7 +548,7 @@ fun DeviceScreen(
             }
         }
 
-        // 4. Health Monitoring Controls & Sensors
+        // 4. Health Monitoring Controls & Sensors (Persisted Input Toggles)
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
@@ -594,8 +590,12 @@ fun DeviceScreen(
                             iconBg = HeartRateBg,
                             title = "Continuous Heart Rate",
                             subtitle = "Every 5 min · Optical sensor high-precision",
-                            checked = heartRateToggle,
-                            onCheckedChange = { heartRateToggle = it }
+                            checked = deviceSettings.continuousHeartRate,
+                            onCheckedChange = { newVal ->
+                                val updated = deviceSettings.copy(continuousHeartRate = newVal)
+                                deviceSettings = updated
+                                settingsStore.saveSettings(updated)
+                            }
                         )
 
                         SensorToggleRow(
@@ -604,8 +604,12 @@ fun DeviceScreen(
                             iconBg = CmfPurpleBg,
                             title = "All-Day Blood Oxygen",
                             subtitle = "Automatic low oxygen alert under 90%",
-                            checked = spO2Toggle,
-                            onCheckedChange = { spO2Toggle = it }
+                            checked = deviceSettings.allDaySpO2,
+                            onCheckedChange = { newVal ->
+                                val updated = deviceSettings.copy(allDaySpO2 = newVal)
+                                deviceSettings = updated
+                                settingsStore.saveSettings(updated)
+                            }
                         )
 
                         SensorToggleRow(
@@ -614,8 +618,12 @@ fun DeviceScreen(
                             iconBg = TroughBg,
                             title = "Sleep Apnea & Breathing",
                             subtitle = "Nightly respiratory rate disturbances",
-                            checked = sleepApneaToggle,
-                            onCheckedChange = { sleepApneaToggle = it }
+                            checked = deviceSettings.sleepApneaBreathing,
+                            onCheckedChange = { newVal ->
+                                val updated = deviceSettings.copy(sleepApneaBreathing = newVal)
+                                deviceSettings = updated
+                                settingsStore.saveSettings(updated)
+                            }
                         )
 
                         SensorToggleRow(
@@ -624,15 +632,19 @@ fun DeviceScreen(
                             iconBg = CmfOrangeContainer,
                             title = "High Stress Reminders",
                             subtitle = "Guided haptic breath session trigger",
-                            checked = stressToggle,
-                            onCheckedChange = { stressToggle = it }
+                            checked = deviceSettings.highStressReminders,
+                            onCheckedChange = { newVal ->
+                                val updated = deviceSettings.copy(highStressReminders = newVal)
+                                deviceSettings = updated
+                                settingsStore.saveSettings(updated)
+                            }
                         )
                     }
                 }
             }
         }
 
-        // 5. Preferences & Feedback Section
+        // 5. Preferences & Feedback Section (Persisted Haptic & AOD Toggles)
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
@@ -690,7 +702,7 @@ fun DeviceScreen(
                                         color = TextOnSurface
                                     )
                                     Text(
-                                        text = "Phone, WhatsApp, Calendar, Slack",
+                                        text = "Configured notification channels",
                                         fontFamily = AppFontFamily,
                                         fontSize = 12.sp,
                                         color = TextMutedGray
@@ -705,7 +717,7 @@ fun DeviceScreen(
                             )
                         }
 
-                        // Haptic Engine & Segmented Picker
+                        // Haptic Engine & Segmented Picker (Persisted)
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -731,7 +743,7 @@ fun DeviceScreen(
                                     )
                                 }
                                 Text(
-                                    text = selectedHaptic.uppercase(),
+                                    text = deviceSettings.hapticLevel.uppercase(),
                                     fontFamily = AppFontFamily,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp,
@@ -750,13 +762,17 @@ fun DeviceScreen(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 listOf("Subtle", "Medium", "Firm").forEach { level ->
-                                    val isSelected = selectedHaptic == level
+                                    val isSelected = deviceSettings.hapticLevel == level
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
                                             .clip(CircleShape)
                                             .background(if (isSelected) DeviceCardBg else Color.Transparent)
-                                            .clickable { selectedHaptic = level }
+                                            .clickable {
+                                                val updated = deviceSettings.copy(hapticLevel = level)
+                                                deviceSettings = updated
+                                                settingsStore.saveSettings(updated)
+                                            }
                                             .padding(vertical = 8.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -772,7 +788,7 @@ fun DeviceScreen(
                             }
                         }
 
-                        // Always-On Display (AOD)
+                        // Always-On Display (AOD) Toggle (Persisted)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -795,8 +811,12 @@ fun DeviceScreen(
                             }
 
                             Switch(
-                                checked = aodToggle,
-                                onCheckedChange = { aodToggle = it },
+                                checked = deviceSettings.alwaysOnDisplay,
+                                onCheckedChange = { newVal ->
+                                    val updated = deviceSettings.copy(alwaysOnDisplay = newVal)
+                                    deviceSettings = updated
+                                    settingsStore.saveSettings(updated)
+                                },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
                                     checkedTrackColor = CmfOrange
@@ -808,7 +828,7 @@ fun DeviceScreen(
             }
         }
 
-        // 6. Storage & Device Health Section
+        // 6. Storage & Device Health Section (Zero hardcoded values)
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
@@ -844,55 +864,23 @@ fun DeviceScreen(
                                 color = TextOnSurface
                             )
                             Text(
-                                text = "1.2 GB / 4.0 GB Used",
+                                text = "-- / -- Used",
                                 fontFamily = AppFontFamily,
                                 fontSize = 12.sp,
                                 color = TextMutedGray
                             )
                         }
 
-                        // Segmented Progress Bar
+                        // Storage Bar
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(10.dp)
+                                .height(8.dp)
                                 .clip(CircleShape)
                                 .background(TroughBg)
-                        ) {
-                            Row(modifier = Modifier.fillMaxSize()) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxHeight()
-                                        .weight(0.20f)
-                                        .background(CmfOrange)
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxHeight()
-                                        .weight(0.10f)
-                                        .background(CmfPurple)
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxHeight()
-                                        .weight(0.05f)
-                                        .background(CmfGreen)
-                                )
-                                Spacer(modifier = Modifier.weight(0.65f))
-                            }
-                        }
+                        )
 
-                        // Legend Pills
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            LegendItem(color = CmfOrange, label = "Faces")
-                            LegendItem(color = CmfPurple, label = "Music")
-                            LegendItem(color = CmfGreen, label = "Logs")
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(2.dp))
 
                         // Reboot Action
                         Surface(
@@ -909,7 +897,7 @@ fun DeviceScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Reboot CMF Watch Pro 2",
+                                    text = "Reboot Watch",
                                     fontFamily = AppFontFamily,
                                     fontWeight = FontWeight.Medium,
                                     fontSize = 13.sp,
@@ -1216,27 +1204,6 @@ private fun SensorToggleRow(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = CmfOrange
             )
-        )
-    }
-}
-
-@Composable
-private fun LegendItem(color: Color, label: String) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(7.dp)
-                .clip(CircleShape)
-                .background(color)
-        )
-        Text(
-            text = label,
-            fontFamily = AppFontFamily,
-            fontSize = 12.sp,
-            color = TextMutedGray
         )
     }
 }

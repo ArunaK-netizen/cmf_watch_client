@@ -1,53 +1,124 @@
 package com.cmfwatch.companion.ui.device
 
+import android.widget.Toast
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.BatteryFull
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Help
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.LinkOff
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Smartphone
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.Watch
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.cmfwatch.companion.R
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.domain.models.DeviceConnectionState
-import com.cmfwatch.companion.domain.models.DiscoveredDevice
 import com.cmfwatch.companion.ui.theme.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
+// ==========================================
+// COLOR PALETTE (EXACT CMF EXPRESSIVE LIGHT THEME)
+// ==========================================
+
+private val DeviceBg = Color(0xFFF9F9FC)
+private val DeviceCardBg = Color(0xFFFFFFFF)
+private val TroughBg = Color(0xFFF3F3F6)
+private val CmfOrange = Color(0xFFFF5722)
+private val CmfOrangeContainer = Color(0xFFFFDBD1)
+private val CmfOrangeDark = Color(0xFFB02F00)
+private val CmfGreen = Color(0xFF008733)
+private val CmfGreenBg = Color(0xFFE8FDF0)
+private val CmfPurple = Color(0xFF4C4ACA)
+private val CmfPurpleBg = Color(0xFFE2DFFF)
+private val TextOnSurface = Color(0xFF1A1C1E)
+private val TextVariant = Color(0xFF5B4039)
+private val TextMutedGray = Color(0xFF70777D)
+private val DeviceBorder = Color(0xFFE2E2E5)
+
+// ==========================================
+// MOTION EXTENSION
+// ==========================================
+
+@Composable
+private fun Modifier.bouncyClickable(
+    scaleDown: Float = 0.94f,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+): Modifier {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) scaleDown else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "bouncyClick"
+    )
+    return graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }.clickable(
+        interactionSource = interaction,
+        indication = null,
+        enabled = enabled,
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun Modifier.pulse(from: Float = 0.9f, to: Float = 1.25f, durationMs: Int = 1200): Modifier {
+    val transition = rememberInfiniteTransition(label = "pulse")
+    val scale by transition.animateFloat(
+        initialValue = from,
+        targetValue = to,
+        animationSpec = infiniteRepeatable(
+            tween(durationMs, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+    return graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }
+}
+
+// ==========================================
+// MAIN DEVICE SCREEN COMPOSABLE
+// ==========================================
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeviceScreen(
     summary: DashboardSummary,
@@ -58,444 +129,1051 @@ fun DeviceScreen(
     onBackClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val isConnected = summary.connectionState == DeviceConnectionState.CONNECTED_PAIRED ||
             summary.connectionState == DeviceConnectionState.CONNECTED
+
+    var isFindingWatch by remember { mutableStateOf(false) }
+    var selectedHaptic by remember { mutableStateOf("Firm") }
+
+    // Sensor Toggles
+    var heartRateToggle by remember { mutableStateOf(true) }
+    var spO2Toggle by remember { mutableStateOf(true) }
+    var sleepApneaToggle by remember { mutableStateOf(true) }
+    var stressToggle by remember { mutableStateOf(true) }
+    var aodToggle by remember { mutableStateOf(true) }
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(LightBackground)
+            .background(DeviceBg)
             .statusBarsPadding()
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 132.dp)
+        contentPadding = PaddingValues(top = 12.dp, bottom = 120.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // 1. Top Bar (< Back, Options ...)
+        // 1. Header Bar (CMF PRO + Connected Status + Avatar)
         item {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
-                    onClick = onBackClick,
-                    modifier = Modifier.size(36.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "Back",
-                        tint = TextPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "CMF",
+                            fontFamily = HeadlineFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = TextOnSurface
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color(0xFFEEEFEF))
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "PRO",
+                                fontFamily = AppFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                color = TextVariant
+                            )
+                        }
+                    }
+
+                    // Connected Badge
+                    Surface(
+                        shape = CircleShape,
+                        color = TroughBg
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isConnected) CmfGreen else TextMutedGray)
+                                    .pulse()
+                            )
+                            Text(
+                                text = if (isConnected) "Connected · ${summary.deviceBatteryLevel ?: 84}%" else "Disconnected",
+                                fontFamily = AppFontFamily,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 12.sp,
+                                color = TextVariant
+                            )
+                        }
+                    }
                 }
 
-                IconButton(
-                    onClick = { },
+                // Profile Avatar Circle
+                Box(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(SurfaceWhite)
+                        .background(CmfOrangeContainer),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.MoreHoriz,
-                        contentDescription = "More options",
-                        tint = TextPrimary,
+                        imageVector = Icons.Default.Watch,
+                        contentDescription = "Device Profile",
+                        tint = CmfOrange,
                         modifier = Modifier.size(20.dp)
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
         }
 
-        // 2. Hero Header Section (CMF Watch Title, Battery, Status & Watch Illustration)
+        // 2. Primary Device Hero Card
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = DeviceCardBg,
+                shadowElevation = 2.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, DeviceBorder, RoundedCornerShape(28.dp))
             ) {
-                // Left Column Stats
-                Column(modifier = Modifier.weight(1.2f)) {
-                    Text(
-                        text = "CMF Watch",
-                        fontFamily = HeadlineFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 28.sp,
-                        letterSpacing = (-0.56).sp,
-                        color = TextPrimary
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Top Bar (Primary Device + Active Sync)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Box(
                             modifier = Modifier
-                                .size(8.dp)
                                 .clip(CircleShape)
-                                .background(if (isConnected) RingGreen else TextMuted)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (isConnected) "Connected" else "Disconnected",
-                            fontFamily = AppFontFamily,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 14.sp,
-                            color = if (isConnected) RingGreen else TextSecondary
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = if (isConnected) "Last synced 2 min ago" else "Tap Sync to update",
-                        fontFamily = AppFontFamily,
-                        fontSize = 12.sp,
-                        color = TextSecondary
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Battery Badge Pill
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0xFFE5E5EA))
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.BatteryFull,
-                                contentDescription = null,
-                                tint = if (summary.deviceBatteryLevel != null) RingGreen else TextMuted,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
+                                .background(TroughBg)
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
                             Text(
-                                text = summary.deviceBatteryLevel?.let { "$it%" } ?: "--",
+                                text = "PRIMARY DEVICE",
                                 fontFamily = AppFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = TextPrimary
+                                fontSize = 10.sp,
+                                color = TextVariant,
+                                letterSpacing = 0.5.sp
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = null,
-                                tint = TextMuted,
-                                modifier = Modifier.size(14.dp)
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(CmfGreen)
+                                    .pulse()
+                            )
+                            Text(
+                                text = "Active Sync",
+                                fontFamily = AppFontFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp,
+                                color = CmfGreen
                             )
                         }
                     }
-                }
-
-                // Right Watch Render Canvas Illustration
-                Box(
-                    modifier = Modifier
-                        .size(160.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(Color(0xFFE3F2FD), Color(0xFFF6F8FA))
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CmfWatchProVectorIllustration()
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-        }
-
-        // 3. Quick Actions Card Section
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(SurfaceWhite)
-                    .padding(16.dp)
-            ) {
-                Column {
-                    Text(
-                        text = "Quick actions",
-                        fontFamily = AppFontFamily,
-                        fontSize = 12.sp,
-                        color = TextSecondary
-                    )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    // Center Watch Showcase Image with Orange Radial Glow
+                    Box(
+                        modifier = Modifier
+                            .size(220.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Soft Radial Ambient Glow
+                        Box(
+                            modifier = Modifier
+                                .size(180.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.radialGradient(
+                                        colors = listOf(CmfOrangeContainer.copy(alpha = 0.6f), Color.Transparent)
+                                    )
+                                )
+                        )
+
+                        // Render Watch Image from res/drawable or Vector
+                        Image(
+                            painter = painterResource(id = R.drawable.cmf_watch_pro2),
+                            contentDescription = "CMF Watch Pro 2",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .size(200.dp)
+                                .shadow(8.dp, CircleShape, clip = false)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Title & Identity
+                    Text(
+                        text = "CMF Watch Pro 2",
+                        fontFamily = HeadlineFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        color = TextOnSurface
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Dark Gray Case · Liquid Orange Silicone",
+                        fontFamily = AppFontFamily,
+                        fontSize = 13.sp,
+                        color = TextVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Hardware Metrics Trough
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(TroughBg)
+                            .padding(vertical = 12.dp, horizontal = 8.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        QuickActionButton(
-                            label = "Watch Faces",
-                            icon = Icons.Default.Watch,
-                            iconColor = Color(0xFF7C4DFF),
-                            bgColor = Color(0xFFEDE7F6),
-                            onClick = { }
+                        HardwareMetricColumn(
+                            icon = Icons.Default.BluetoothConnected,
+                            iconTint = CmfOrange,
+                            label = "LINK",
+                            value = "BLE 5.3",
+                            subtext = "Optimal"
                         )
-                        QuickActionButton(
-                            label = "Notifications",
-                            icon = Icons.Default.Notifications,
-                            iconColor = Color(0xFFFF5252),
-                            bgColor = Color(0xFFFFEBEE),
-                            hasBadge = false,
-                            onClick = { }
+                        HardwareMetricColumn(
+                            icon = Icons.Default.BatteryFull,
+                            iconTint = CmfGreen,
+                            label = "BATTERY",
+                            value = summary.deviceBatteryLevel?.let { "$it%" } ?: "84%",
+                            subtext = "~8d left"
                         )
-                        QuickActionButton(
-                            label = "Find My Watch",
-                            icon = Icons.Default.MyLocation,
-                            iconColor = Color(0xFF34C759),
-                            bgColor = Color(0xFFE8F8EE),
-                            onClick = { if (isConnected) onSyncNow() }
-                        )
-                        QuickActionButton(
-                            label = "Watch Settings",
-                            icon = Icons.Default.Settings,
-                            iconColor = Color(0xFF29B6F6),
-                            bgColor = Color(0xFFE3F2FD),
-                            onClick = { }
+                        HardwareMetricColumn(
+                            icon = Icons.Default.Verified,
+                            iconTint = CmfPurple,
+                            label = "FIRMWARE",
+                            value = "v2.1.04",
+                            subtext = "Latest"
                         )
                     }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-        }
+                    Spacer(modifier = Modifier.height(16.dp))
 
-        // 4. Main Settings Group Card 1
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(SurfaceWhite)
-            ) {
-                Column {
-                    SettingsRowItem(
-                        icon = Icons.Default.BarChart,
-                        iconColor = Color(0xFF7C4DFF),
-                        iconBg = Color(0xFFEDE7F6),
-                        title = "Health Settings",
-                        subtitle = "Heart rate, sleep, activity tracking"
-                    )
-                    SettingsDivider()
-                    SettingsRowItem(
-                        icon = Icons.Default.Folder,
-                        iconColor = Color(0xFF29B6F6),
-                        iconBg = Color(0xFFE3F2FD),
-                        title = "Apps",
-                        subtitle = "Manage apps on your watch"
-                    )
-                    SettingsDivider()
-                    SettingsRowItem(
-                        icon = Icons.Default.Smartphone,
-                        iconColor = Color(0xFFFFB300),
-                        iconBg = Color(0xFFFFF8E1),
-                        title = "Display & Brightness",
-                        subtitle = "Watch face, brightness, always-on"
-                    )
-                    SettingsDivider()
-                    SettingsRowItem(
-                        icon = Icons.Default.VolumeUp,
-                        iconColor = Color(0xFFFF5252),
-                        iconBg = Color(0xFFFFEBEE),
-                        title = "Sound & Vibration",
-                        subtitle = "Ringtones, vibration, do not disturb"
-                    )
-                    SettingsDivider()
-                    SettingsRowItem(
-                        icon = Icons.Default.CloudSync,
-                        iconColor = Color(0xFF34C759),
-                        iconBg = Color(0xFFE8F8EE),
-                        title = "Sync & Data",
-                        subtitle = if (summary.connectionState == DeviceConnectionState.SYNCING) "Syncing data..." else "Last synced 2 min ago",
-                        onClick = onSyncNow
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-
-        // 5. Settings Group Card 2 (About & Help)
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(SurfaceWhite)
-            ) {
-                Column {
-                    SettingsRowItem(
-                        icon = Icons.Default.Info,
-                        iconColor = Color(0xFF8E8E93),
-                        iconBg = Color(0xFFF2F2F7),
-                        title = "About",
-                        subtitle = "Device info, firmware, legal"
-                    )
-                    SettingsDivider()
-                    SettingsRowItem(
-                        icon = Icons.Default.Help,
-                        iconColor = Color(0xFF007AFF),
-                        iconBg = Color(0xFFE5F1FF),
-                        title = "Help & Support",
-                        subtitle = "User guide, troubleshooting"
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-        }
-
-        // 6. Soft Red Disconnect Watch Button
-        item {
-            val disconnectInteractionSource = remember { MutableInteractionSource() }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFFFFEBEE))
-                    .clickable(
-                        interactionSource = disconnectInteractionSource,
-                        indication = null
+                    // Find My Watch Action Button
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isFindingWatch) CmfOrangeContainer else TroughBg,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(CircleShape)
+                            .bouncyClickable {
+                                isFindingWatch = true
+                                Toast
+                                    .makeText(
+                                        context,
+                                        "Pinging CMF Watch Pro 2... Audio alert sent!",
+                                        Toast.LENGTH_SHORT
+                                    )
+                                    .show()
+                                scope.launch {
+                                    delay(3200)
+                                    isFindingWatch = false
+                                }
+                            }
                     ) {
-                        if (isConnected) {
-                            onDisconnectDevice()
-                        } else {
-                            onStartScan()
+                        Row(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Sensors,
+                                contentDescription = "Find Watch",
+                                tint = CmfOrange,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isFindingWatch) "Pinging Watch..." else "Find My Watch",
+                                fontFamily = AppFontFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = if (isFindingWatch) CmfOrangeDark else TextOnSurface
+                            )
                         }
                     }
-                    .padding(vertical = 16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.LinkOff,
-                        contentDescription = null,
-                        tint = Color(0xFFFF3B30),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (isConnected) "Disconnect Watch" else "Pair Watch",
-                        fontFamily = AppFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = Color(0xFFFF3B30)
-                    )
+
+                    if (isFindingWatch) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Watch is vibrating with audio ping...",
+                            fontFamily = AppFontFamily,
+                            fontSize = 12.sp,
+                            color = CmfGreen,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
-
-            Spacer(modifier = Modifier.height(20.dp))
         }
 
-        // 7. Nearby Watches Discovery List (When disconnected/scanning)
-        if (summary.discoveredDevices.isNotEmpty()) {
-            item {
-                Text(
-                    text = "NEARBY WATCHES",
-                    fontFamily = AppFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    color = TextSecondary,
-                    letterSpacing = 1.sp
-                )
-                Spacer(modifier = Modifier.height(12.dp))
+        // 3. Watch Face Gallery Section
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Current Face",
+                            fontFamily = HeadlineFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = TextOnSurface
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(CmfOrange)
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { }
+                    ) {
+                        Text(
+                            text = "Browse 100+",
+                            fontFamily = AppFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            color = CmfOrange
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = "Browse",
+                            tint = CmfOrange,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                // Horizontal Carousel of Watch Faces
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp)
+                ) {
+                    item {
+                        WatchFaceCard(
+                            name = "CMF Digital Ring",
+                            status = "Installed · Active",
+                            isActive = true,
+                            faceType = WatchFaceType.DIGITAL_RING
+                        )
+                    }
+                    item {
+                        WatchFaceCard(
+                            name = "Studio Bauhaus",
+                            status = "Stored on Watch",
+                            isActive = false,
+                            faceType = WatchFaceType.CHRONO
+                        )
+                    }
+                    item {
+                        WatchFaceCard(
+                            name = "Vitals Trio",
+                            status = "Cloud Preset",
+                            isActive = false,
+                            faceType = WatchFaceType.TRIPLE_RING
+                        )
+                    }
+                }
+
+                // Customize Button
+                Surface(
+                    shape = CircleShape,
+                    color = CmfOrangeContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(CircleShape)
+                        .bouncyClickable { }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(vertical = 14.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Palette,
+                            contentDescription = "Customize",
+                            tint = CmfOrangeDark,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Customize Complications & Color",
+                            fontFamily = AppFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = CmfOrangeDark
+                        )
+                    }
+                }
             }
-            items(summary.discoveredDevices) { device ->
-                DiscoveredDeviceRow(device, { onConnectDevice(device.address) })
-                Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        // 4. Health Monitoring Controls & Sensors
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Health & Telemetry",
+                        fontFamily = HeadlineFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = TextOnSurface
+                    )
+                    Text(
+                        text = "Sensor Hub v3",
+                        fontFamily = AppFontFamily,
+                        fontSize = 12.sp,
+                        color = TextMutedGray
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = DeviceCardBg,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, DeviceBorder, RoundedCornerShape(24.dp))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        SensorToggleRow(
+                            icon = Icons.Default.Favorite,
+                            iconTint = HeartRateRed,
+                            iconBg = HeartRateBg,
+                            title = "Continuous Heart Rate",
+                            subtitle = "Every 5 min · Optical sensor high-precision",
+                            checked = heartRateToggle,
+                            onCheckedChange = { heartRateToggle = it }
+                        )
+
+                        SensorToggleRow(
+                            icon = Icons.Default.WaterDrop,
+                            iconTint = CmfPurple,
+                            iconBg = CmfPurpleBg,
+                            title = "All-Day Blood Oxygen",
+                            subtitle = "Automatic low oxygen alert under 90%",
+                            checked = spO2Toggle,
+                            onCheckedChange = { spO2Toggle = it }
+                        )
+
+                        SensorToggleRow(
+                            icon = Icons.Default.NightlightRound,
+                            iconTint = TextOnSurface,
+                            iconBg = TroughBg,
+                            title = "Sleep Apnea & Breathing",
+                            subtitle = "Nightly respiratory rate disturbances",
+                            checked = sleepApneaToggle,
+                            onCheckedChange = { sleepApneaToggle = it }
+                        )
+
+                        SensorToggleRow(
+                            icon = Icons.Default.Psychology,
+                            iconTint = CmfOrange,
+                            iconBg = CmfOrangeContainer,
+                            title = "High Stress Reminders",
+                            subtitle = "Guided haptic breath session trigger",
+                            checked = stressToggle,
+                            onCheckedChange = { stressToggle = it }
+                        )
+                    }
+                }
+            }
+        }
+
+        // 5. Preferences & Feedback Section
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Preferences & Feedback",
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = TextOnSurface,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = DeviceCardBg,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, DeviceBorder, RoundedCornerShape(24.dp))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // App Notifications Row
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { },
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(TroughBg),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.NotificationsActive,
+                                        contentDescription = "Notifications",
+                                        tint = TextOnSurface,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "App Notifications",
+                                        fontFamily = AppFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = TextOnSurface
+                                    )
+                                    Text(
+                                        text = "Phone, WhatsApp, Calendar, Slack",
+                                        fontFamily = AppFontFamily,
+                                        fontSize = 12.sp,
+                                        color = TextMutedGray
+                                    )
+                                }
+                            }
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = "Open",
+                                tint = TextMutedGray,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // Haptic Engine & Segmented Picker
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Vibration,
+                                        contentDescription = "Haptics",
+                                        tint = TextVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "Haptic Engine & Digital Crown",
+                                        fontFamily = AppFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = TextOnSurface
+                                    )
+                                }
+                                Text(
+                                    text = selectedHaptic.uppercase(),
+                                    fontFamily = AppFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = CmfOrange,
+                                    letterSpacing = 0.5.sp
+                                )
+                            }
+
+                            // 3-Segment Selector
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(CircleShape)
+                                    .background(TroughBg)
+                                    .padding(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                listOf("Subtle", "Medium", "Firm").forEach { level ->
+                                    val isSelected = selectedHaptic == level
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(CircleShape)
+                                            .background(if (isSelected) DeviceCardBg else Color.Transparent)
+                                            .clickable { selectedHaptic = level }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = level,
+                                            fontFamily = AppFontFamily,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            fontSize = 12.sp,
+                                            color = if (isSelected) TextOnSurface else TextMutedGray
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Always-On Display (AOD)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Always-On Display (AOD)",
+                                    fontFamily = AppFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = TextOnSurface
+                                )
+                                Text(
+                                    text = "Scheduled · 07:00 to 23:00 daily",
+                                    fontFamily = AppFontFamily,
+                                    fontSize = 12.sp,
+                                    color = TextMutedGray
+                                )
+                            }
+
+                            Switch(
+                                checked = aodToggle,
+                                onCheckedChange = { aodToggle = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = CmfOrange
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. Storage & Device Health Section
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Storage & Device Health",
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = TextOnSurface,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = DeviceCardBg,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, DeviceBorder, RoundedCornerShape(24.dp))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "On-Board Storage",
+                                fontFamily = AppFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = TextOnSurface
+                            )
+                            Text(
+                                text = "1.2 GB / 4.0 GB Used",
+                                fontFamily = AppFontFamily,
+                                fontSize = 12.sp,
+                                color = TextMutedGray
+                            )
+                        }
+
+                        // Segmented Progress Bar
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(10.dp)
+                                .clip(CircleShape)
+                                .background(TroughBg)
+                        ) {
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .weight(0.20f)
+                                        .background(CmfOrange)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .weight(0.10f)
+                                        .background(CmfPurple)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .weight(0.05f)
+                                        .background(CmfGreen)
+                                )
+                                Spacer(modifier = Modifier.weight(0.65f))
+                            }
+                        }
+
+                        // Legend Pills
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            LegendItem(color = CmfOrange, label = "Faces")
+                            LegendItem(color = CmfPurple, label = "Music")
+                            LegendItem(color = CmfGreen, label = "Logs")
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Reboot Action
+                        Surface(
+                            shape = CircleShape,
+                            color = TroughBg,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(CircleShape)
+                                .bouncyClickable { }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Reboot CMF Watch Pro 2",
+                                    fontFamily = AppFontFamily,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 13.sp,
+                                    color = TextOnSurface
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.RestartAlt,
+                                    contentDescription = "Reboot",
+                                    tint = TextMutedGray,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        // Unpair Action
+                        Surface(
+                            shape = CircleShape,
+                            color = HeartRateBg,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(CircleShape)
+                                .bouncyClickable {
+                                    if (isConnected) onDisconnectDevice() else onStartScan()
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (isConnected) "Unpair & Factory Reset" else "Pair Watch",
+                                    fontFamily = AppFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = HeartRateRed
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.LinkOff,
+                                    contentDescription = "Unpair",
+                                    tint = HeartRateRed,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
-@Composable
-fun QuickActionButton(
-    label: String,
-    icon: ImageVector,
-    iconColor: Color,
-    bgColor: Color,
-    hasBadge: Boolean = false,
-    onClick: () -> Unit = {}
-) {
-    val interactionSource = remember { MutableInteractionSource() }
+// ==========================================
+// SUBCOMPONENTS
+// ==========================================
 
+@Composable
+private fun HardwareMetricColumn(
+    icon: ImageVector,
+    iconTint: Color,
+    label: String,
+    value: String,
+    subtext: String
+) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null
-            ) { onClick() }
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(bgColor),
-            contentAlignment = Alignment.Center
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = iconColor,
-                modifier = Modifier.size(26.dp)
+                tint = iconTint,
+                modifier = Modifier.size(16.dp)
             )
-
-            if (hasBadge) {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .offset(x = 10.dp, y = (-10).dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFFF3B30))
-                )
-            }
+            Text(
+                text = label,
+                fontFamily = AppFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                color = TextVariant,
+                letterSpacing = 0.5.sp
+            )
         }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
         Text(
-            text = label,
+            text = value,
             fontFamily = AppFontFamily,
-            fontWeight = FontWeight.Medium,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            color = TextOnSurface
+        )
+        Text(
+            text = subtext,
+            fontFamily = AppFontFamily,
             fontSize = 11.sp,
-            color = TextPrimary
+            color = TextMutedGray
         )
     }
 }
 
+private enum class WatchFaceType {
+    DIGITAL_RING,
+    CHRONO,
+    TRIPLE_RING
+}
+
 @Composable
-fun SettingsRowItem(
+private fun WatchFaceCard(
+    name: String,
+    status: String,
+    isActive: Boolean,
+    faceType: WatchFaceType
+) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = DeviceCardBg,
+        shadowElevation = 2.dp,
+        modifier = Modifier
+            .width(170.dp)
+            .border(
+                1.dp,
+                if (isActive) CmfOrange else DeviceBorder,
+                RoundedCornerShape(24.dp)
+            )
+    ) {
+        Box(modifier = Modifier.padding(12.dp)) {
+            if (isActive) {
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(CmfOrange)
+                        .align(Alignment.TopEnd),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Active",
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Circular Watch Face Preview
+                Box(
+                    modifier = Modifier
+                        .size(116.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF14151D)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.size(104.dp)) {
+                        val center = Offset(size.width / 2, size.height / 2)
+                        val radius = size.width / 2
+
+                        when (faceType) {
+                            WatchFaceType.DIGITAL_RING -> {
+                                drawCircle(
+                                    color = CmfOrange,
+                                    radius = radius - 3.dp.toPx(),
+                                    center = center,
+                                    style = Stroke(width = 3.dp.toPx())
+                                )
+                            }
+                            WatchFaceType.CHRONO -> {
+                                drawCircle(
+                                    color = Color.White.copy(alpha = 0.2f),
+                                    radius = radius - 4.dp.toPx(),
+                                    center = center,
+                                    style = Stroke(width = 2.dp.toPx())
+                                )
+                                drawLine(
+                                    color = CmfOrange,
+                                    start = center,
+                                    end = Offset(center.x + 25.dp.toPx(), center.y - 25.dp.toPx()),
+                                    strokeWidth = 3.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
+                            }
+                            WatchFaceType.TRIPLE_RING -> {
+                                drawCircle(
+                                    color = CmfOrange,
+                                    radius = radius - 4.dp.toPx(),
+                                    center = center,
+                                    style = Stroke(width = 3.dp.toPx())
+                                )
+                                drawCircle(
+                                    color = CmfGreen,
+                                    radius = radius - 10.dp.toPx(),
+                                    center = center,
+                                    style = Stroke(width = 3.dp.toPx())
+                                )
+                            }
+                        }
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "MON 26",
+                            fontFamily = AppFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp,
+                            color = CmfOrange
+                        )
+                        Text(
+                            text = "10:09",
+                            fontFamily = HeadlineFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "8,452",
+                            fontFamily = AppFontFamily,
+                            fontSize = 9.sp,
+                            color = Color.LightGray
+                        )
+                    }
+                }
+
+                Text(
+                    text = name,
+                    fontFamily = AppFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = TextOnSurface
+                )
+                Text(
+                    text = status,
+                    fontFamily = AppFontFamily,
+                    fontSize = 11.sp,
+                    color = if (isActive) CmfOrange else TextMutedGray
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SensorToggleRow(
     icon: ImageVector,
-    iconColor: Color,
+    iconTint: Color,
     iconBg: Color,
     title: String,
     subtitle: String,
-    onClick: () -> Unit = {}
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null
-            ) { onClick() }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
             modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -506,129 +1184,57 @@ fun SettingsRowItem(
             ) {
                 Icon(
                     imageVector = icon,
-                    contentDescription = null,
-                    tint = iconColor,
+                    contentDescription = title,
+                    tint = iconTint,
                     modifier = Modifier.size(20.dp)
                 )
             }
-
-            Spacer(modifier = Modifier.width(12.dp))
 
             Column {
                 Text(
                     text = title,
                     fontFamily = AppFontFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = TextPrimary
+                    fontSize = 14.sp,
+                    color = TextOnSurface
                 )
                 Text(
                     text = subtitle,
                     fontFamily = AppFontFamily,
                     fontSize = 12.sp,
-                    color = TextSecondary
+                    color = TextMutedGray
                 )
             }
         }
 
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = TextMuted,
-            modifier = Modifier.size(18.dp)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = CmfOrange
+            )
         )
     }
 }
 
 @Composable
-fun SettingsDivider() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 68.dp)
-            .height(1.dp)
-            .background(Color(0xFFF2F2F7))
-    )
-}
-
-@Composable
-fun CmfWatchProVectorIllustration() {
-    Canvas(modifier = Modifier.size(110.dp, 130.dp)) {
-        val w = size.width
-        val h = size.height
-
-        // Watch Straps (Black vertical bands)
-        drawRoundRect(
-            color = Color(0xFF2C2C2E),
-            topLeft = Offset(w * 0.25f, 0f),
-            size = Size(w * 0.5f, h),
-            cornerRadius = CornerRadius(12.dp.toPx(), 12.dp.toPx())
-        )
-
-        // Watch Casing (Dark Gray Metallic Bezel)
-        drawRoundRect(
-            color = Color(0xFF1C1C1E),
-            topLeft = Offset(w * 0.12f, h * 0.15f),
-            size = Size(w * 0.76f, h * 0.7f),
-            cornerRadius = CornerRadius(20.dp.toPx(), 20.dp.toPx())
-        )
-
-        // Digital Crown / Dial Button on Right
-        drawRoundRect(
-            color = Color(0xFF48484A),
-            topLeft = Offset(w * 0.88f, h * 0.42f),
-            size = Size(w * 0.08f, h * 0.16f),
-            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
-        )
-
-        // Screen Display (Black glass)
-        drawRoundRect(
-            color = Color(0xFF000000),
-            topLeft = Offset(w * 0.16f, h * 0.19f),
-            size = Size(w * 0.68f, h * 0.62f),
-            cornerRadius = CornerRadius(16.dp.toPx(), 16.dp.toPx())
-        )
-
-        // Orange Accent Dial Graphic on Screen
-        drawCircle(
-            color = Color(0xFFFF5216),
-            radius = 12.dp.toPx(),
-            center = Offset(w * 0.62f, h * 0.58f)
-        )
-    }
-}
-
-@Composable
-private fun DiscoveredDeviceRow(device: DiscoveredDevice, onConnect: () -> Unit) {
+private fun LegendItem(color: Color, label: String) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onConnect)
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = device.name,
-                fontFamily = AppFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                color = TextPrimary
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "Nearby • ${device.rssi} dBm",
-                fontFamily = AppFontFamily,
-                fontSize = 12.sp,
-                color = TextSecondary
-            )
-        }
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
         Text(
-            text = "Connect",
+            text = label,
             fontFamily = AppFontFamily,
-            fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-            color = AccentRed
+            fontSize = 12.sp,
+            color = TextMutedGray
         )
     }
 }

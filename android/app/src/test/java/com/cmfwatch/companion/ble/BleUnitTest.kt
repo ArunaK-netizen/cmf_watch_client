@@ -246,4 +246,32 @@ class BleUnitTest {
         assertEquals("Cricket", latest!!.type)
         assertEquals(2700, latest.durationSeconds)
     }
+
+    @Test
+    fun testDecodeLiveWorkoutStatusInitialStart32Bytes() {
+        val buffer = java.nio.ByteBuffer.allocate(32).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt(1700000000) // startSec
+        buffer.putShort(0.toShort()) // duration: 0 (just started!)
+        buffer.put(17.toByte()) // Cricket (17)
+        buffer.put(0x01.toByte()) // flags
+        buffer.put(ByteArray(24)) // padding
+
+        val status = TelemetryDecoders.decodeLiveWorkoutStatus(buffer.array())
+        assertNotNull(status)
+        assertTrue(status!!.first) // isActive == true
+        assertEquals("Cricket", status.second.displayName)
+    }
+
+    @Test
+    fun testDecodeLiveWorkoutStatusCompletedReturnsNullForSummaryBatch() {
+        val buffer = java.nio.ByteBuffer.allocate(32).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt(1700000000) // startSec
+        buffer.putShort(300.toShort()) // duration: 300 seconds (> 0)
+        buffer.put(1.toByte()) // Outdoor Run (1)
+        buffer.put(0x01.toByte()) // flags
+        buffer.put(ByteArray(24))
+
+        val status = TelemetryDecoders.decodeLiveWorkoutStatus(buffer.array())
+        assertNull(status) // Must return null so it falls through to decodeWorkoutSummaryBatch!
+    }
 }

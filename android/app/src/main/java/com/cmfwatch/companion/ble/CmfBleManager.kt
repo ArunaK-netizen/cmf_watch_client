@@ -133,25 +133,10 @@ class CmfBleManager(
     // System-level Bluetooth bond management
     private var bondStateReceiver: BroadcastReceiver? = null
     private var pendingBondDevice: BluetoothDevice? = null
-    private var lastWorkoutPacketMs: Long = 0L
-    private var workoutWatchdogJob: Job? = null
 
-    private fun noteWorkoutPacket() {
-        lastWorkoutPacketMs = System.currentTimeMillis()
-        _isWorkoutActive.value = true
-        if (workoutWatchdogJob == null || workoutWatchdogJob?.isActive != true) {
-            workoutWatchdogJob = managerScope.launch {
-                while (_isWorkoutActive.value) {
-                    delay(1000)
-                    if (_isWorkoutActive.value && System.currentTimeMillis() - lastWorkoutPacketMs > 12000) {
-                        Log.i(TAG, "Workout watchdog: 12s packet silence detected. Ending live workout session...")
-                        _isWorkoutActive.value = false
-                        _liveWorkoutHeartRate.value = null
-                        triggerSync()
-                        break
-                    }
-                }
-            }
+    fun queryActivityData() {
+        managerScope.launch {
+            sendFrame(0xFFFF, 0x8005, byteArrayOf(0xA5.toByte()), useEncryption = true)
         }
     }
 
@@ -787,7 +772,6 @@ class CmfBleManager(
                     val newest = samples.last()
                     _latestHeartRate.value = newest.bpm
                     if (isWorkout) {
-                        noteWorkoutPacket()
                         _isWorkoutActive.value = true
                         _liveWorkoutHeartRate.value = newest.bpm
                     }
@@ -865,16 +849,12 @@ class CmfBleManager(
 
             // WORKOUT_SUMMARY OR LIVE WORKOUT STATUS (0x0057 or 0x0160)
             cmd1 == 0x0057 || cmd1 == 0x0160 -> {
-                val liveStatus = if (payload.size < 28) TelemetryDecoders.decodeLiveWorkoutStatus(payload) else null
+                val liveStatus = TelemetryDecoders.decodeLiveWorkoutStatus(payload)
                 if (liveStatus != null) {
                     val (isActive, sport) = liveStatus
                     _activeWorkoutType.value = sport.displayName
-                    if (isActive) {
-                        _isWorkoutActive.value = true
-                        noteWorkoutPacket()
-                    } else {
-                        workoutWatchdogJob?.cancel()
-                        _isWorkoutActive.value = false
+                    _isWorkoutActive.value = isActive
+                    if (!isActive) {
                         _liveWorkoutHeartRate.value = null
                         triggerSync()
                     }
@@ -883,7 +863,6 @@ class CmfBleManager(
                     // Completed workout summary batch from watch (32 or 54 bytes per record)
                     val workouts = TelemetryDecoders.decodeWorkoutSummaryBatch(payload)
                     if (workouts.isNotEmpty()) {
-                        workoutWatchdogJob?.cancel()
                         _isWorkoutActive.value = false
                         _liveWorkoutHeartRate.value = null
                         managerScope.launch {
@@ -985,7 +964,6 @@ class CmfBleManager(
     fun stopWorkoutMode(sport: CmfSport = CmfSport.OUTDOOR_RUN) {
         managerScope.launch {
             Log.i(TAG, "Stopping Live Workout Mode on watch for ${sport.displayName}...")
-            workoutWatchdogJob?.cancel()
             _isWorkoutActive.value = false
             _liveWorkoutHeartRate.value = null
 

@@ -425,7 +425,12 @@ object TelemetryDecoders {
                 val durationShort = buffer.short.toInt() and 0xFFFF
                 val sportCode = buffer.get().toInt() and 0xFF
                 val sport = CmfSport.fromId(sportCode)
-                return if (durationShort == 0) Pair(true, sport) else Pair(false, sport)
+                // If duration is 0, this is the INITIAL workout start packet from the watch!
+                if (durationShort == 0 && startSec > 1600000000L) {
+                    return Pair(true, sport)
+                }
+                // If durationShort > 0, this is a completed workout summary batch, NOT a live status!
+                return null
             } catch (_: Exception) {
                 // fall through to short packet heuristic
             }

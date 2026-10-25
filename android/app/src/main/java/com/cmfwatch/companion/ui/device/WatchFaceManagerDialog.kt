@@ -394,21 +394,29 @@ fun WatchFaceManagerDialog(
                         onFlashWatchface(
                             payload,
                             { progress ->
-                                flashProgress = progress
-                                flashStatusText = when {
-                                    progress < 0.2f -> "Handshaking with Watch (Opcode 0x8052)..."
-                                    progress < 0.3f -> "Setting Watchface Slot (Opcode 0x9063)..."
-                                    progress < 0.95f -> "Streaming Binary Blocks (${(progress * 100).toInt()}%)..."
-                                    else -> "Finalizing & Activating (Opcode 0x9065)..."
+                                scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                    flashProgress = progress
+                                    flashStatusText = when {
+                                        progress < 0.2f -> "Handshaking with Watch (Opcode 0x8052)..."
+                                        progress < 0.3f -> "Setting Watchface Slot (Opcode 0x9063)..."
+                                        progress < 0.95f -> "Streaming Binary Blocks (${(progress * 100).toInt()}%)..."
+                                        else -> "Finalizing & Activating (Opcode 0x9065)..."
+                                    }
                                 }
                             },
                             { success ->
-                                isFlashing = false
-                                if (success) {
-                                    Toast.makeText(context, "Watch Face Installed & Activated Successfully!", Toast.LENGTH_LONG).show()
-                                    onDismiss()
-                                } else {
-                                    Toast.makeText(context, "Watch Face transfer failed. Ensure watch is connected.", Toast.LENGTH_LONG).show()
+                                scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                    isFlashing = false
+                                    if (success) {
+                                        try {
+                                            Toast.makeText(context, "Watch Face Installed & Activated Successfully!", Toast.LENGTH_LONG).show()
+                                        } catch (_: Exception) {}
+                                        onDismiss()
+                                    } else {
+                                        try {
+                                            Toast.makeText(context, "Watch Face transfer failed. Ensure watch is connected.", Toast.LENGTH_LONG).show()
+                                        } catch (_: Exception) {}
+                                    }
                                 }
                             }
                         )

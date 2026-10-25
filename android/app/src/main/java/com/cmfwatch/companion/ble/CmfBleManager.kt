@@ -433,6 +433,14 @@ class CmfBleManager(
             cmdCharacteristic = service.getCharacteristic(CMF_CMD_CHAR_UUID)
             cmdWriteCharacteristic = service.getCharacteristic(CMF_CMD_WRITE_CHAR_UUID)
 
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    gatt.requestMtu(247)
+                }
+            } catch (e: SecurityException) {
+                Log.w(TAG, "SecurityException requesting MTU: ${e.message}")
+            }
+
             if (cmdCharacteristic != null) {
                 Log.i(TAG, "Subscribing to Command notifications ($CMF_CMD_CHAR_UUID)...")
                 _connectionState.value = DeviceConnectionState.SUBSCRIBING
@@ -476,6 +484,10 @@ class CmfBleManager(
             if (cmdWriteCharacteristic == null) {
                 Log.w(TAG, "Command write characteristic ${CMF_CMD_WRITE_CHAR_UUID} not found.")
             }
+        }
+
+        override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+            Log.i(TAG, "GATT MTU updated: $mtu (status: $status)")
         }
 
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
@@ -659,7 +671,7 @@ class CmfBleManager(
             val signed1 = signChallenge(rnd1, pairingSecret!!)
             val pairPayload = rnd1 + signed1
             Log.i(TAG, "Sending AUTH_PAIR_REQUEST to watch via command channel.")
-            sendFrame(0xFFFF, 0x8047, pairPayload, useEncryption = false)
+            sendFrameAsync(0xFFFF, 0x8047, pairPayload, useEncryption = false)
             return
         }
     }
@@ -711,7 +723,7 @@ class CmfBleManager(
             // Step 1 Response: AUTH_WATCH_MAC (0xFFFF 0049) -> Send Step 2: AUTH_NONCE_REQUEST (0xFFFF 804B)
             cmd1 == 0xFFFF && cmd2 == 0x0049 -> {
                 Log.i(TAG, "Received AUTH_WATCH_MAC (0xFFFF 0x0049). Step 2: Sending AUTH_NONCE_REQUEST (0xFFFF 0x804B)...")
-                sendFrame(0xFFFF, 0x804B, byteArrayOf(0xA5.toByte()), useEncryption = true)
+                sendFrameAsync(0xFFFF, 0x804B, byteArrayOf(0xA5.toByte()), useEncryption = true)
             }
 
             // Step 2 Response: AUTH_NONCE_REPLY (0xFFFF 0x004C) -> Derive sessionKey & Send Step 3: AUTHENTICATED_CONFIRM_REQUEST (0xFFFF 0x804D)
@@ -723,7 +735,7 @@ class CmfBleManager(
                 Log.i(TAG, "Session key established: [REDACTED]")
 
                 Log.i(TAG, "Step 3: Sending AUTHENTICATED_CONFIRM_REQUEST (0xFFFF 0x804D)...")
-                sendFrame(0xFFFF, 0x804D, byteArrayOf(0xA5.toByte()), useEncryption = true)
+                sendFrameAsync(0xFFFF, 0x804D, byteArrayOf(0xA5.toByte()), useEncryption = true)
             }
 
             // Step 3 Response: AUTHENTICATED_CONFIRM_REPLY (0xFFFF 0x0004) -> Authentication Complete!
@@ -878,7 +890,7 @@ class CmfBleManager(
             // ACTIVITY_FETCH_1 acknowledgement: send the second fetch only after
             // the watch has finished processing the first request.
             cmd1 == 0xFFFF && cmd2 == 0x0005 -> {
-                sendFrame(0xFFFF, 0x9057, byteArrayOf(0xA5.toByte()), useEncryption = true)
+                sendFrameAsync(0xFFFF, 0x9057, byteArrayOf(0xA5.toByte()), useEncryption = true)
             }
         }
     }
@@ -898,7 +910,7 @@ class CmfBleManager(
     }
 
     fun fetchBattery() {
-        sendFrame(0x005C, 0x0002, byteArrayOf(0xA5.toByte()), useEncryption = true)
+        sendFrameAsync(0x005C, 0x0002, byteArrayOf(0xA5.toByte()), useEncryption = true)
     }
 
     fun enableRealtimeStream() {
@@ -925,7 +937,7 @@ class CmfBleManager(
 
     fun findMyWatch() {
         Log.i(TAG, "Sending FIND_MY_WATCH ping command (0xFFFF 8006)...")
-        sendFrame(0xFFFF, 0x8006, byteArrayOf(0x01), useEncryption = true)
+        sendFrameAsync(0xFFFF, 0x8006, byteArrayOf(0x01), useEncryption = true)
     }
 
     fun startWorkoutMode(sport: CmfSport = CmfSport.OUTDOOR_RUN) {
@@ -1005,12 +1017,12 @@ class CmfBleManager(
         managerScope.launch {
             try {
                 Log.i(TAG, "Starting Watch Face Flash: ${binBytes.size} bytes...")
-                onProgress(0.05f)
+                withContext(Dispatchers.Main) { onProgress(0.05f) }
 
                 // 1. DATA_TRANSFER_WATCHFACE_INIT_1 (0xFFFF 0x8052)
                 sendFrame(0xFFFF, 0x8052, byteArrayOf(0xA5.toByte()), useEncryption = true)
                 delay(300)
-                onProgress(0.15f)
+                withContext(Dispatchers.Main) { onProgress(0.15f) }
 
                 // 2. DATA_TRANSFER_WATCHFACE_INIT_2 (0xFFFF 0x9063)
                 val crc = java.util.zip.CRC32().apply { update(binBytes) }.value
@@ -1020,75 +1032,97 @@ class CmfBleManager(
                 init2Payload.putInt(-1) // 0xFFFFFFFF = auto-append slot
                 sendFrame(0xFFFF, 0x9063, init2Payload.array(), useEncryption = true)
                 delay(400)
-                onProgress(0.25f)
+                withContext(Dispatchers.Main) { onProgress(0.25f) }
 
                 // 3. Chunk transmission
-                val chunkSize = 256
+                // Use 224 bytes chunk size so each chunk fits cleanly in a 247-byte MTU frame
+                val chunkSize = 224
                 val totalChunks = (binBytes.size + chunkSize - 1) / chunkSize
                 for (chunkIdx in 0 until totalChunks) {
                     val start = chunkIdx * chunkSize
                     val end = minOf(binBytes.size, start + chunkSize)
                     val chunk = binBytes.copyOfRange(start, end)
-                    sendFrame(0xFFFF, 0x9064, chunk, useEncryption = false)
-                    delay(30)
+
+                    var ok = sendFrame(0xFFFF, 0x9064, chunk, useEncryption = false)
+                    if (!ok) {
+                        Log.w(TAG, "Chunk $chunkIdx write failed, retrying...")
+                        delay(50)
+                        ok = sendFrame(0xFFFF, 0x9064, chunk, useEncryption = false)
+                        if (!ok) {
+                            Log.e(TAG, "Chunk $chunkIdx write failed after retry")
+                        }
+                    }
+                    delay(20)
                     val progress = 0.25f + 0.65f * ((chunkIdx + 1).toFloat() / totalChunks)
-                    onProgress(progress)
+                    withContext(Dispatchers.Main) { onProgress(progress) }
                 }
 
                 // 4. DATA_TRANSFER_WATCHFACE_FINISH (0xFFFF 0x9065)
                 sendFrame(0xFFFF, 0x9065, byteArrayOf(0x01), useEncryption = true)
                 delay(800)
-                onProgress(1.0f)
-                onComplete(true)
+                withContext(Dispatchers.Main) {
+                    onProgress(1.0f)
+                    onComplete(true)
+                }
                 Log.i(TAG, "Watch Face Flash Completed Successfully!")
             } catch (e: Exception) {
                 Log.e(TAG, "Watch Face Flash Error: ${e.message}")
-                onComplete(false)
+                withContext(Dispatchers.Main) {
+                    onComplete(false)
+                }
             }
         }
     }
 
-    private fun sendFrame(cmd1: Int, cmd2: Int, payload: ByteArray, useEncryption: Boolean) {
+    private fun sendFrameAsync(cmd1: Int, cmd2: Int, payload: ByteArray, useEncryption: Boolean) {
         managerScope.launch {
-            gattWriteMutex.withLock {
-                val gatt = bluetoothGatt ?: return@withLock
-                val target = cmdWriteCharacteristic ?: cmdCharacteristic ?: return@withLock
+            sendFrame(cmd1, cmd2, payload, useEncryption)
+        }
+    }
 
-                val key = if (useEncryption) sessionKey else null
+    private suspend fun sendFrame(cmd1: Int, cmd2: Int, payload: ByteArray, useEncryption: Boolean): Boolean {
+        return gattWriteMutex.withLock {
+            val gatt = bluetoothGatt ?: return@withLock false
+            val target = cmdWriteCharacteristic ?: cmdCharacteristic ?: return@withLock false
 
-                val frames = ProtocolFramer.buildFrames(
-                    cmd1 = cmd1,
-                    cmd2 = cmd2,
-                    payload = payload,
-                    sessionKey = key
-                )
+            val key = if (useEncryption) sessionKey else null
 
-                for (frameBytes in frames) {
-                    try {
-                        val completion = CompletableDeferred<Boolean>()
-                        pendingGattWrite = completion
-                        target.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                        val res = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            gatt.writeCharacteristic(target, frameBytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothStatusCodes.SUCCESS
-                        } else {
-                            target.value = frameBytes
-                            gatt.writeCharacteristic(target)
-                        }
-                        Log.i(TAG, "sendFrame writeCharacteristic (cmd1=0x%04X, cmd2=0x%04X, len=${frameBytes.size}, enc=$useEncryption) res=$res".format(cmd1, cmd2, frameBytes.size, useEncryption))
-                        val writeResult = if (!res) {
-                            false
-                        } else {
-                            withTimeoutOrNull(5000) { completion.await() } ?: false
-                        }
-                        pendingGattWrite = null
-                        if (!writeResult) {
-                            Log.w(TAG, "GATT write did not complete successfully for cmd1=0x%04X cmd2=0x%04X".format(cmd1, cmd2))
-                        }
-                    } catch (e: SecurityException) {
-                        Log.e(TAG, "SecurityException writing characteristic: ${e.message}")
+            val frames = ProtocolFramer.buildFrames(
+                cmd1 = cmd1,
+                cmd2 = cmd2,
+                payload = payload,
+                sessionKey = key
+            )
+
+            var allOk = true
+            for (frameBytes in frames) {
+                try {
+                    val completion = CompletableDeferred<Boolean>()
+                    pendingGattWrite = completion
+                    target.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    val res = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        gatt.writeCharacteristic(target, frameBytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothStatusCodes.SUCCESS
+                    } else {
+                        target.value = frameBytes
+                        gatt.writeCharacteristic(target)
                     }
+                    Log.i(TAG, "sendFrame writeCharacteristic (cmd1=0x%04X, cmd2=0x%04X, len=${frameBytes.size}, enc=$useEncryption) res=$res".format(cmd1, cmd2, frameBytes.size, useEncryption))
+                    val writeResult = if (!res) {
+                        false
+                    } else {
+                        withTimeoutOrNull(5000) { completion.await() } ?: false
+                    }
+                    pendingGattWrite = null
+                    if (!writeResult) {
+                        Log.w(TAG, "GATT write did not complete successfully for cmd1=0x%04X cmd2=0x%04X".format(cmd1, cmd2))
+                        allOk = false
+                    }
+                } catch (e: SecurityException) {
+                    Log.e(TAG, "SecurityException writing characteristic: ${e.message}")
+                    allOk = false
                 }
             }
+            allOk
         }
     }
 

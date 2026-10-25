@@ -157,4 +157,51 @@ class BleUnitTest {
         assertNotNull(stopStatus)
         assertFalse(stopStatus!!.first) // isActive == false
     }
+
+    @Test
+    fun testDecodeWorkoutSummaryPackedStructFreeTraining() {
+        val buffer = java.nio.ByteBuffer.allocate(24).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt(1700000000) // startSec
+        buffer.putShort(96.toShort()) // duration: 96 seconds
+        buffer.put(11.toByte()) // sport type: Free Training (11)
+        buffer.put(0x49.toByte()) // flags
+        buffer.putInt(0) // distance: 0m
+        buffer.putInt(12) // calories: 12 kcal
+        buffer.put(105.toByte()) // avg HR: 105
+        buffer.put(120.toByte()) // max HR: 120
+        buffer.putShort(0.toShort()) // avg pace: 0
+
+        val workout = TelemetryDecoders.decodeWorkoutSummary(buffer.array())
+        assertNotNull(workout)
+        assertEquals("Free Training", workout!!.type)
+        assertEquals(96, workout.durationSeconds)
+        assertEquals(1, workout.durationMinutes)
+        assertEquals(0.0f, workout.distanceKm, 0.001f)
+        assertEquals(12, workout.caloriesKcal)
+        assertEquals(105, workout.avgHr)
+        assertEquals(120, workout.maxHr)
+    }
+
+    @Test
+    fun testDecodeWorkoutSummaryRunning() {
+        val buffer = java.nio.ByteBuffer.allocate(24).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt(1700000000) // startSec
+        buffer.putShort(1800.toShort()) // duration: 1800 seconds (30 min)
+        buffer.put(1.toByte()) // sport type: Outdoor Run (1)
+        buffer.put(0x01.toByte()) // flags
+        buffer.putInt(5000) // distance: 5000m = 5.0 km
+        buffer.putInt(320) // calories: 320 kcal
+        buffer.put(145.toByte()) // avg HR: 145
+        buffer.put(165.toByte()) // max HR: 165
+        buffer.putShort(360.toShort()) // avg pace: 360 sec/km (6 min/km)
+
+        val workout = TelemetryDecoders.decodeWorkoutSummary(buffer.array())
+        assertNotNull(workout)
+        assertEquals("Outdoor Run", workout!!.type)
+        assertEquals(1800, workout.durationSeconds)
+        assertEquals(30, workout.durationMinutes)
+        assertEquals(5.0f, workout.distanceKm, 0.001f)
+        assertEquals(320, workout.caloriesKcal)
+        assertEquals(145, workout.avgHr)
+    }
 }

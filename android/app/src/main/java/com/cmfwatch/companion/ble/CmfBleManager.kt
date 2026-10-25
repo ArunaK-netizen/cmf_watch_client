@@ -133,6 +133,26 @@ class CmfBleManager(
     // System-level Bluetooth bond management
     private var bondStateReceiver: BroadcastReceiver? = null
     private var pendingBondDevice: BluetoothDevice? = null
+    private var lastWorkoutPacketMs: Long = 0L
+    private var workoutWatchdogJob: Job? = null
+
+    private fun noteWorkoutPacket() {
+        lastWorkoutPacketMs = System.currentTimeMillis()
+        if (workoutWatchdogJob == null || workoutWatchdogJob?.isActive != true) {
+            workoutWatchdogJob = managerScope.launch {
+                while (_isWorkoutActive.value) {
+                    delay(1000)
+                    if (_isWorkoutActive.value && System.currentTimeMillis() - lastWorkoutPacketMs > 4000) {
+                        Log.i(TAG, "Workout watchdog: 4s packet silence detected. Ending live workout session...")
+                        _isWorkoutActive.value = false
+                        _liveWorkoutHeartRate.value = null
+                        triggerSync()
+                        break
+                    }
+                }
+            }
+        }
+    }
 
     private val _isPairedWithWatch = MutableStateFlow(hasSavedPairing())
     val isPairedWithWatch: StateFlow<Boolean> = _isPairedWithWatch.asStateFlow()
@@ -766,6 +786,7 @@ class CmfBleManager(
                     val newest = samples.last()
                     _latestHeartRate.value = newest.bpm
                     if (isWorkout) {
+                        noteWorkoutPacket()
                         _isWorkoutActive.value = true
                         _liveWorkoutHeartRate.value = newest.bpm
                     }
@@ -846,6 +867,7 @@ class CmfBleManager(
                 val workout = TelemetryDecoders.decodeWorkoutSummary(payload)
                 if (workout != null && workout.durationMinutes > 0) {
                     // Completed workout summary from watch
+                    workoutWatchdogJob?.cancel()
                     _isWorkoutActive.value = false
                     _liveWorkoutHeartRate.value = null
                     managerScope.launch { _workoutFlow.emit(workout) }
@@ -857,7 +879,10 @@ class CmfBleManager(
                         val (isActive, sport) = status
                         _isWorkoutActive.value = isActive
                         _activeWorkoutType.value = sport.displayName
-                        if (!isActive) {
+                        if (isActive) {
+                            noteWorkoutPacket()
+                        } else {
+                            workoutWatchdogJob?.cancel()
                             _liveWorkoutHeartRate.value = null
                         }
                         Log.i(TAG, "Decoded Live Workout Status from watch: active=$isActive, sport=${sport.displayName}")
@@ -954,6 +979,7 @@ class CmfBleManager(
     fun stopWorkoutMode(sport: CmfSport = CmfSport.OUTDOOR_RUN) {
         managerScope.launch {
             Log.i(TAG, "Stopping Live Workout Mode on watch for ${sport.displayName}...")
+            workoutWatchdogJob?.cancel()
             _isWorkoutActive.value = false
             _liveWorkoutHeartRate.value = null
 

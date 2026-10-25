@@ -204,6 +204,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         // Observe Step Intervals
         viewModelScope.launch {
             bleManager.stepFlow.collect { step ->
+                if (step.steps == 0) {
+                    telemetryStore.pruneInvalidStepIntervals(0)
+                }
                 telemetryStore.saveStepInterval(step)
                 val allStepList = telemetryStore.getStepIntervals()
                 val todayStepList = telemetryStore.getStepIntervalsToday()
@@ -303,18 +306,20 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Smart periodic sampling timer (every 2 minutes)
+        // Smart periodic sampling timer (15s idle, 3s active workout)
         startPeriodicSamplingTimer()
     }
 
     private fun startPeriodicSamplingTimer() {
         viewModelScope.launch {
             while (true) {
-                delay(120_000) // 2 minutes smart sync
+                val pollDelay = if (_uiState.value.isWorkoutActive) 3_000L else 15_000L
+                delay(pollDelay)
                 if (_uiState.value.connectionState == DeviceConnectionState.CONNECTED_PAIRED) {
-                    bleManager.fetchBattery()
                     bleManager.enableRealtimeStream()
-                    bleManager.triggerSync()
+                    if (!_uiState.value.isWorkoutActive) {
+                        bleManager.fetchBattery()
+                    }
                 }
             }
         }

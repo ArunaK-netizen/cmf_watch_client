@@ -332,21 +332,42 @@ object TelemetryDecoders {
      * Layout: start_time(u32), duration_sec(u32), distance_m(u32), calories(u32), avg_hr(u32), max_hr(u32), avg_pace(u32), type_id(u32).
      */
     fun decodeWorkoutSummary(payload: ByteArray): SavedWorkout? {
-        if (payload.size < 28) return null
+        if (payload.size < 8) return null
         try {
             val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
             val startSec = buffer.int.toLong() and 0xFFFFFFFFL
-            val durationSec = buffer.int.toLong() and 0xFFFFFFFFL
-            val distanceMeters = buffer.int.toLong() and 0xFFFFFFFFL
-            val caloriesVal = buffer.int.toLong() and 0xFFFFFFFFL
-            val avgHr = buffer.int and 0xFF
-            val maxHr = buffer.int and 0xFF
-            val avgPaceSec = if (buffer.remaining() >= 4) buffer.int else 0
-            val typeId = if (buffer.remaining() >= 4) buffer.int else 1
-            val typeName = CmfSport.fromId(typeId).displayName
 
+            // Offset 4..5: duration in seconds (uint16_le)
+            // Offset 6: sport type ID (uint8)
+            // Offset 7: status flags (uint8)
+            val durationShort = buffer.short.toInt() and 0xFFFF
+            val byte6 = if (buffer.hasRemaining()) buffer.get().toInt() and 0xFF else 1
+            val byte7 = if (buffer.hasRemaining()) buffer.get().toInt() and 0xFF else 0
+
+            val (durationSec, typeId) = if (byte6 in 1..35) {
+                Pair(durationShort, byte6)
+            } else if (byte7 in 1..35) {
+                Pair(durationShort, byte7)
+            } else {
+                val d = (durationShort.toLong()) or ((byte6.toLong()) shl 16) or ((byte7.toLong()) shl 24)
+                if (d in 1..86400L) {
+                    val fallbackType = if (buffer.remaining() >= 4) buffer.int else 1
+                    Pair(d.toInt(), fallbackType)
+                } else {
+                    Pair(durationShort, 1)
+                }
+            }
+
+            val typeName = CmfSport.fromId(typeId).displayName
             val startTime = Instant.ofEpochSecond(startSec)
-            val durationMins = (durationSec / 60).toInt().coerceAtLeast(1)
+            val durationMins = (durationSec / 60).coerceAtLeast(if (durationSec > 0) 1 else 0)
+
+            val distanceMeters = if (buffer.remaining() >= 4) (buffer.int.toLong() and 0xFFFFFFFFL) else 0L
+            val caloriesVal = if (buffer.remaining() >= 4) (buffer.int.toLong() and 0xFFFFFFFFL) else 0L
+            val avgHr = if (buffer.remaining() >= 1) (buffer.get().toInt() and 0xFF) else 0
+            val maxHr = if (buffer.remaining() >= 1) (buffer.get().toInt() and 0xFF) else 0
+            val avgPaceSec = if (buffer.remaining() >= 2) (buffer.short.toInt() and 0xFFFF) else 0
+
             val distKm = distanceMeters / 1000.0f
             val caloriesKcal = caloriesVal.toInt().coerceAtLeast(0)
 
@@ -358,7 +379,8 @@ object TelemetryDecoders {
                 caloriesKcal = caloriesKcal,
                 avgHr = avgHr,
                 maxHr = maxHr,
-                avgPaceSec = avgPaceSec
+                avgPaceSec = avgPaceSec,
+                durationSeconds = durationSec
             )
         } catch (e: Exception) {
             e.printStackTrace()

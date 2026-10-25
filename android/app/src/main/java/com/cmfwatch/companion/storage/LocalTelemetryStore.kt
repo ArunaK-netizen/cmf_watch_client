@@ -20,7 +20,8 @@ data class SavedWorkout(
     val caloriesKcal: Int,
     val avgHr: Int = 0,
     val maxHr: Int = 0,
-    val avgPaceSec: Int = 0
+    val avgPaceSec: Int = 0,
+    val durationSeconds: Int = durationMinutes * 60
 )
 
 class LocalTelemetryStore(context: Context) {
@@ -150,13 +151,36 @@ class LocalTelemetryStore(context: Context) {
     fun computeStandHoursToday(): Int {
         val todayIntervals = getStepIntervalsToday()
         if (todayIntervals.isEmpty()) return 0
+        val totalSteps = todayIntervals.sumOf { it.steps }
+        if (totalSteps < 250) return 0
         val zone = ZoneId.systemDefault()
         val hourlySteps = IntArray(24)
         todayIntervals.forEach { interval ->
             val hour = interval.timestamp.atZone(zone).hour
             hourlySteps[hour] += interval.steps
         }
-        return hourlySteps.count { it >= 250 }
+        val standCount = hourlySteps.count { it >= 250 }
+        return minOf(standCount, totalSteps / 250)
+    }
+
+    fun pruneInvalidStepIntervals(currentKnownTotalSteps: Int) {
+        val today = LocalDate.now()
+        val zone = ZoneId.systemDefault()
+        val all = getStepIntervals()
+        val todaySum = all.filter { it.timestamp.atZone(zone).toLocalDate() == today }.sumOf { it.steps }
+        if (currentKnownTotalSteps == 0 && todaySum > 0) {
+            val pruned = all.filter { it.timestamp.atZone(zone).toLocalDate() != today }
+            val array = JSONArray()
+            pruned.forEach { item ->
+                val obj = JSONObject()
+                obj.put("timestamp", item.timestamp.toString())
+                obj.put("steps", item.steps)
+                obj.put("distanceMeters", item.distanceMeters.toDouble())
+                obj.put("caloriesKcal", item.caloriesKcal.toDouble())
+                array.put(obj)
+            }
+            preferences.edit().putString(KEY_STEP_INTERVALS, array.toString()).apply()
+        }
     }
 
     fun saveWorkout(workout: SavedWorkout) {
@@ -174,6 +198,7 @@ class LocalTelemetryStore(context: Context) {
             obj.put("type", item.type)
             obj.put("startTime", item.startTime.toString())
             obj.put("durationMinutes", item.durationMinutes)
+            obj.put("durationSeconds", item.durationSeconds)
             obj.put("distanceKm", item.distanceKm.toDouble())
             obj.put("caloriesKcal", item.caloriesKcal)
             obj.put("avgHr", item.avgHr)
@@ -188,22 +213,50 @@ class LocalTelemetryStore(context: Context) {
     fun getSavedWorkouts(): List<SavedWorkout> {
         val jsonStr = preferences.getString(KEY_WORKOUTS, null) ?: return emptyList()
         val list = mutableListOf<SavedWorkout>()
+        var needResave = false
         try {
             val array = JSONArray(jsonStr)
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
+                var durMin = obj.getInt("durationMinutes")
+                var durSec = obj.optInt("durationSeconds", durMin * 60)
+                // Auto-heal corrupt duration from old 32-bit unpack bug
+                if (durMin > 1440) {
+                    val rawSec = (durMin.toLong() * 60L) and 0xFFFFL
+                    durSec = if (rawSec in 1..86400L) rawSec.toInt() else 96
+                    durMin = (durSec / 60).coerceAtLeast(1)
+                    needResave = true
+                }
                 list.add(
                     SavedWorkout(
                         type = obj.getString("type"),
                         startTime = Instant.parse(obj.getString("startTime")),
-                        durationMinutes = obj.getInt("durationMinutes"),
+                        durationMinutes = durMin,
                         distanceKm = obj.getDouble("distanceKm").toFloat(),
                         caloriesKcal = obj.getInt("caloriesKcal"),
                         avgHr = obj.optInt("avgHr", 0),
                         maxHr = obj.optInt("maxHr", 0),
-                        avgPaceSec = obj.optInt("avgPaceSec", 0)
+                        avgPaceSec = obj.optInt("avgPaceSec", 0),
+                        durationSeconds = durSec
                     )
                 )
+            }
+            if (needResave) {
+                val updatedArray = JSONArray()
+                list.forEach { item ->
+                    val obj = JSONObject()
+                    obj.put("type", item.type)
+                    obj.put("startTime", item.startTime.toString())
+                    obj.put("durationMinutes", item.durationMinutes)
+                    obj.put("durationSeconds", item.durationSeconds)
+                    obj.put("distanceKm", item.distanceKm.toDouble())
+                    obj.put("caloriesKcal", item.caloriesKcal)
+                    obj.put("avgHr", item.avgHr)
+                    obj.put("maxHr", item.maxHr)
+                    obj.put("avgPaceSec", item.avgPaceSec)
+                    updatedArray.put(obj)
+                }
+                preferences.edit().putString(KEY_WORKOUTS, updatedArray.toString()).apply()
             }
         } catch (e: Exception) {
             e.printStackTrace()

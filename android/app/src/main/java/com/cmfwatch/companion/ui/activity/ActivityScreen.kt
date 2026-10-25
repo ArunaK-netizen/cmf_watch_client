@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cmfwatch.companion.domain.models.CmfSport
@@ -134,14 +135,16 @@ fun ActivityScreen(
     val scope = rememberCoroutineScope()
 
     val workouts = summary.workoutsToday
-    val weeklyKm = workouts.sumOf { it.distanceKm.toDouble() }.toFloat()
+    val allWorkouts = summary.workoutsAll
+    val effectiveWorkouts = if (allWorkouts.isNotEmpty()) allWorkouts else workouts
+    val weeklyKm = effectiveWorkouts.sumOf { it.distanceKm.toDouble() }.toFloat()
     val weeklyGoal = goals.weeklyDistanceGoalKm
     val goalPct = if (weeklyGoal > 0f) ((weeklyKm / weeklyGoal) * 100f).roundToInt().coerceAtMost(999) else 0
-    val activeMinutes = workouts.sumOf { it.durationMinutes }
-    val energy = workouts.sumOf { it.caloriesKcal }
-    val avgPace = averagePace(workouts)
-    val latest = workouts.maxByOrNull { it.startTime }
-    val dayBars = remember(workouts) { weeklyBars(workouts) }
+    val activeMinutes = effectiveWorkouts.sumOf { it.durationMinutes }
+    val energy = effectiveWorkouts.sumOf { it.caloriesKcal }
+    val avgPace = averagePace(effectiveWorkouts)
+    val latest = allWorkouts.maxByOrNull { it.startTime } ?: workouts.maxByOrNull { it.startTime }
+    val dayBars = remember(effectiveWorkouts) { weeklyBars(effectiveWorkouts) }
 
     Column(
         modifier = modifier
@@ -315,6 +318,12 @@ fun ActivityScreen(
                             )
                         )
                     }
+                )
+            }
+
+            item {
+                WorkoutHistorySection(
+                    workouts = summary.workoutsAll.sortedByDescending { it.startTime }
                 )
             }
 
@@ -863,9 +872,10 @@ private fun LatestSessionCard(
             val pace = formatPace(workout)
             val km = String.format(Locale.US, "%.2f", workout.distanceKm)
             val zone = avgHr?.let { hrZone(it) }
+            val durationText = formatDurationDisplay(workout)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MetricCell(modifier = Modifier.weight(1f), label = "Total Distance", value = km, unit = "km")
-                MetricCell(modifier = Modifier.weight(1f), label = "Avg Pace", value = pace, unit = "/km")
+                MetricCell(modifier = Modifier.weight(1f), label = "Avg Pace", value = pace, unit = if (pace != "--") "/km" else "")
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MetricCell(
@@ -876,11 +886,16 @@ private fun LatestSessionCard(
                     valueColor = CmfError,
                     badge = zone
                 )
-                MetricCell(modifier = Modifier.weight(1f), label = "Duration", value = "${workout.durationMinutes}", unit = "min")
+                MetricCell(
+                    modifier = Modifier.weight(1f),
+                    label = "Duration",
+                    value = durationText.first,
+                    unit = durationText.second
+                )
             }
 
-            val kmCount = workout.distanceKm.toInt().coerceIn(1, 6)
-            if (kmCount > 0) {
+            if (workout.distanceKm >= 1.0f && pace != "--") {
+                val kmCount = workout.distanceKm.toInt().coerceIn(1, 6)
                 val even = formatPaceClock(workout)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -942,19 +957,28 @@ private fun MetricCell(
     valueColor: Color = CmfOnSurface,
     badge: String? = null
 ) {
+    val fontSize = when {
+        value.length > 7 -> 19.sp
+        value.length > 5 -> 23.sp
+        value.length > 3 -> 27.sp
+        else -> 32.sp
+    }
     Column(
         modifier = modifier
             .clip(InnerShape)
             .background(CmfSurfaceLow.copy(alpha = 0.60f))
-            .padding(8.dp)
+            .padding(10.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(
                 text = label.uppercase(Locale.getDefault()),
                 fontFamily = InterFontFamily,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 11.sp,
-                color = CmfOnSurfaceVariant
+                fontSize = 10.sp,
+                letterSpacing = 0.5.sp,
+                color = CmfOnSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             if (badge != null) {
                 Text(
@@ -970,23 +994,29 @@ private fun MetricCell(
                 )
             }
         }
+        Spacer(modifier = Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 text = value,
                 fontFamily = HeadlineFontFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 36.sp,
-                letterSpacing = (-0.7).sp,
-                color = valueColor
+                fontSize = fontSize,
+                letterSpacing = (-0.5).sp,
+                color = valueColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = " $unit",
-                fontFamily = InterFontFamily,
-                fontWeight = FontWeight.Medium,
-                fontSize = 13.sp,
-                color = CmfOnSurfaceVariant,
-                modifier = Modifier.padding(bottom = 6.dp)
-            )
+            if (unit.isNotBlank()) {
+                Text(
+                    text = " $unit",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    color = CmfOnSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                    maxLines = 1
+                )
+            }
         }
     }
 }
@@ -1241,28 +1271,245 @@ private fun weeklyBars(workouts: List<SavedWorkout>): List<DayBar> {
 
 private fun averagePace(workouts: List<SavedWorkout>): String {
     val dist = workouts.sumOf { it.distanceKm.toDouble() }
-    val mins = workouts.sumOf { it.durationMinutes }
-    if (dist <= 0.0 || mins <= 0) return "--"
-    val paceMin = mins / dist
+    val totalSec = workouts.sumOf { if (it.durationSeconds > 0) it.durationSeconds else it.durationMinutes * 60 }
+    if (dist < 0.1 || totalSec <= 0) return "--"
+    val paceMin = (totalSec / 60.0) / dist
+    if (paceMin > 30.0 || paceMin.isInfinite() || paceMin.isNaN()) return "--"
     val m = paceMin.toInt()
-    val s = ((paceMin - m) * 60).roundToInt()
+    val s = ((paceMin - m) * 60).roundToInt().coerceIn(0, 59)
     return "${m}'${s.toString().padStart(2, '0')}\""
 }
 
 private fun formatPace(workout: SavedWorkout): String {
-    if (workout.distanceKm <= 0f || workout.durationMinutes <= 0) return "--"
-    val paceMin = workout.durationMinutes / workout.distanceKm
+    if (workout.distanceKm < 0.1f) return "--"
+    val durationMin = if (workout.durationSeconds > 0) workout.durationSeconds / 60.0f else workout.durationMinutes.toFloat()
+    if (durationMin <= 0f) return "--"
+    val paceMin = durationMin / workout.distanceKm
+    if (paceMin > 30.0f || paceMin.isInfinite() || paceMin.isNaN()) return "--"
     val m = paceMin.toInt()
     val s = ((paceMin - m) * 60).roundToInt().coerceIn(0, 59)
     return "${m}'${s.toString().padStart(2, '0')}\""
 }
 
 private fun formatPaceClock(workout: SavedWorkout): String {
-    if (workout.distanceKm <= 0f || workout.durationMinutes <= 0) return "--"
-    val paceMin = workout.durationMinutes / workout.distanceKm
+    if (workout.distanceKm < 0.1f) return "--"
+    val durationMin = if (workout.durationSeconds > 0) workout.durationSeconds / 60.0f else workout.durationMinutes.toFloat()
+    if (durationMin <= 0f) return "--"
+    val paceMin = durationMin / workout.distanceKm
+    if (paceMin > 30.0f || paceMin.isInfinite() || paceMin.isNaN()) return "--"
     val m = paceMin.toInt()
     val s = ((paceMin - m) * 60).roundToInt().coerceIn(0, 59)
     return "%d:%02d".format(m, s)
+}
+
+private fun formatDurationDisplay(workout: SavedWorkout): Pair<String, String> {
+    val sec = if (workout.durationSeconds > 0) workout.durationSeconds else workout.durationMinutes * 60
+    return when {
+        sec <= 0 -> Pair("--", "")
+        sec < 60 -> Pair("${sec}", "s")
+        sec < 3600 -> {
+            val mins = sec / 60
+            val remSec = sec % 60
+            if (remSec > 0) Pair("${mins}m ${remSec}s", "") else Pair("$mins", "min")
+        }
+        else -> {
+            val hrs = sec / 3600
+            val mins = (sec % 3600) / 60
+            Pair("${hrs}h ${mins}m", "")
+        }
+    }
+}
+
+@Composable
+private fun WorkoutHistorySection(
+    workouts: List<SavedWorkout>,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .cmfCard()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.History,
+                    contentDescription = null,
+                    tint = CmfPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "WORKOUT HISTORY (${workouts.size})",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    letterSpacing = 0.66.sp,
+                    color = CmfOnSurfaceVariant
+                )
+            }
+            if (workouts.isNotEmpty()) {
+                Text(
+                    text = "${workouts.size} sessions",
+                    fontFamily = InterFontFamily,
+                    fontSize = 12.sp,
+                    color = CmfPrimary
+                )
+            }
+        }
+
+        if (workouts.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(InnerShape)
+                    .background(CmfSurfaceLow)
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.FitnessCenter,
+                    contentDescription = null,
+                    tint = CmfOnSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.size(28.dp)
+                )
+                Text(
+                    text = "No recorded sessions",
+                    fontFamily = InterFontFamily,
+                    fontSize = 13.sp,
+                    color = CmfOnSurfaceVariant
+                )
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                workouts.forEach { session ->
+                    WorkoutHistoryRow(session)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkoutHistoryRow(session: SavedWorkout) {
+    val durationText = formatDurationDisplay(session)
+    val durationStr = if (durationText.second.isNotBlank()) "${durationText.first} ${durationText.second}" else durationText.first
+    val pace = formatPace(session)
+    val hasDistance = session.distanceKm >= 0.1f
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(InnerShape)
+            .background(CmfSurfaceLow.copy(alpha = 0.65f))
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(CmfPrimaryFixed.copy(alpha = 0.35f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = sportIconFor(session.type),
+                    contentDescription = null,
+                    tint = CmfPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = session.type.ifBlank { "Workout" },
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = CmfOnSurface
+                )
+                Text(
+                    text = formatSessionWhen(session),
+                    fontFamily = InterFontFamily,
+                    fontSize = 11.sp,
+                    color = CmfOnSurfaceVariant
+                )
+            }
+        }
+
+        Column(horizontalAlignment = Alignment.End) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = durationStr,
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = CmfOnSurface
+                )
+                if (hasDistance) {
+                    Text(
+                        text = " · ${String.format(Locale.US, "%.2f", session.distanceKm)} km",
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 12.sp,
+                        color = CmfPrimary
+                    )
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(top = 2.dp)
+            ) {
+                if (session.caloriesKcal > 0) {
+                    Text(
+                        text = "${session.caloriesKcal} kcal",
+                        fontFamily = InterFontFamily,
+                        fontSize = 11.sp,
+                        color = CmfOnSurfaceVariant
+                    )
+                }
+                if (session.avgHr > 0) {
+                    Text(
+                        text = "· ${session.avgHr} bpm",
+                        fontFamily = InterFontFamily,
+                        fontSize = 11.sp,
+                        color = CmfError
+                    )
+                }
+                if (hasDistance && pace != "--") {
+                    Text(
+                        text = "· $pace/km",
+                        fontFamily = InterFontFamily,
+                        fontSize = 11.sp,
+                        color = CmfTertiary
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun sportIconFor(type: String): ImageVector {
+    val lower = type.lowercase()
+    return when {
+        "run" in lower -> Icons.Outlined.DirectionsRun
+        "bike" in lower || "cycl" in lower -> Icons.Outlined.DirectionsBike
+        "swim" in lower -> Icons.Outlined.Pool
+        else -> Icons.Outlined.FitnessCenter
+    }
 }
 
 private fun formatHours(minutes: Int): String {

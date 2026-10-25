@@ -185,11 +185,14 @@ class LocalTelemetryStore(context: Context) {
 
     fun saveWorkout(workout: SavedWorkout) {
         val list = getSavedWorkouts().toMutableList()
-        // Deduplicate: skip if a workout with the exact same start time already exists
-        if (list.any { it.startTime == workout.startTime }) {
-            return
+        val existingIndex = list.indexOfFirst {
+            java.time.Duration.between(it.startTime, workout.startTime).abs().seconds < 10
         }
-        list.add(workout)
+        if (existingIndex >= 0) {
+            list[existingIndex] = workout
+        } else {
+            list.add(workout)
+        }
         val trimmed = if (list.size > 100) list.takeLast(100) else list
 
         val array = JSONArray()
@@ -261,7 +264,7 @@ class LocalTelemetryStore(context: Context) {
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        return list
+        return list.sortedBy { it.startTime }
     }
 
     fun getSavedWorkoutsToday(): List<SavedWorkout> {

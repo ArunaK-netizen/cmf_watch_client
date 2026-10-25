@@ -328,18 +328,30 @@ object TelemetryDecoders {
     }
 
     /**
-     * Decode WORKOUT_SUMMARY payload (opcode 0x0057 0x0001 or 0x0160 0x0001):
-     * Layout: start_time(u32), duration_sec(u32), distance_m(u32), calories(u32), avg_hr(u32), max_hr(u32), avg_pace(u32), type_id(u32).
+     * Decode WORKOUT_SUMMARY batch payload (opcode 0x0057 0x0001 or 0x0160 0x0001):
+     * Supports N x 32-byte records (standard) or N x 54-byte records (extended).
+     * Layout: start_time(u32), duration_sec(u16), type_id(u8), flags(u8), distance_m(u32), calories(u32), avg_hr(u8), max_hr(u8), avg_pace(u16)...
      */
-    fun decodeWorkoutSummary(payload: ByteArray): SavedWorkout? {
-        if (payload.size < 8) return null
-        try {
-            val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
-            val startSec = buffer.int.toLong() and 0xFFFFFFFFL
+    fun decodeWorkoutSummaryBatch(payload: ByteArray): List<SavedWorkout> {
+        val list = mutableListOf<SavedWorkout>()
+        if (payload.size < 20) return list
 
-            // Offset 4..5: duration in seconds (uint16_le)
-            // Offset 6: sport type ID (uint8)
-            // Offset 7: status flags (uint8)
+        val recordSize = when {
+            payload.size % 54 == 0 -> 54
+            payload.size % 32 == 0 -> 32
+            payload.size >= 54 -> 54
+            payload.size >= 32 -> 32
+            else -> payload.size
+        }
+
+        val count = (payload.size / recordSize).coerceAtLeast(1)
+        val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+
+        for (i in 0 until count) {
+            val recordStartPos = i * recordSize
+            buffer.position(recordStartPos)
+
+            val startSec = buffer.int.toLong() and 0xFFFFFFFFL
             val durationShort = buffer.short.toInt() and 0xFFFF
             val byte6 = if (buffer.hasRemaining()) buffer.get().toInt() and 0xFF else 1
             val byte7 = if (buffer.hasRemaining()) buffer.get().toInt() and 0xFF else 0
@@ -371,21 +383,31 @@ object TelemetryDecoders {
             val distKm = distanceMeters / 1000.0f
             val caloriesKcal = caloriesVal.toInt().coerceAtLeast(0)
 
-            return SavedWorkout(
-                type = typeName,
-                startTime = startTime,
-                durationMinutes = durationMins,
-                distanceKm = distKm,
-                caloriesKcal = caloriesKcal,
-                avgHr = avgHr,
-                maxHr = maxHr,
-                avgPaceSec = avgPaceSec,
-                durationSeconds = durationSec
-            )
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return null
+            if (startSec > 1600000000L && durationSec > 0) {
+                list.add(
+                    SavedWorkout(
+                        type = typeName,
+                        startTime = startTime,
+                        durationMinutes = durationMins,
+                        distanceKm = distKm,
+                        caloriesKcal = caloriesKcal,
+                        avgHr = avgHr,
+                        maxHr = maxHr,
+                        avgPaceSec = avgPaceSec,
+                        durationSeconds = durationSec
+                    )
+                )
+            }
         }
+        return list.sortedBy { it.startTime }
+    }
+
+    /**
+     * Backward-compatible decode for single summary payload or latest summary.
+     */
+    fun decodeWorkoutSummary(payload: ByteArray): SavedWorkout? {
+        val list = decodeWorkoutSummaryBatch(payload)
+        return list.lastOrNull()
     }
 
     /**
@@ -395,26 +417,21 @@ object TelemetryDecoders {
     fun decodeLiveWorkoutStatus(payload: ByteArray): Pair<Boolean, CmfSport>? {
         if (payload.isEmpty()) return null
 
-        // Check if it's a summary packet where durationSec == 0 (initialization) or > 0 (completion)
+        // If it's a batch summary payload (>= 28 bytes), check if durationSec == 0 (initial start) or > 0 (completed)
         if (payload.size >= 28) {
             try {
                 val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
-                buffer.int // startSec
-                val durationSec = buffer.int.toLong() and 0xFFFFFFFFL
-                buffer.int // dist
-                buffer.int // kcal
-                buffer.int // hr
-                buffer.int // max_hr
-                buffer.int // pace
-                val typeId = if (buffer.remaining() >= 4) buffer.int else 1
-                val sport = CmfSport.fromId(typeId)
-                return if (durationSec == 0L) Pair(true, sport) else Pair(false, sport)
+                val startSec = buffer.int.toLong() and 0xFFFFFFFFL
+                val durationShort = buffer.short.toInt() and 0xFFFF
+                val sportCode = buffer.get().toInt() and 0xFF
+                val sport = CmfSport.fromId(sportCode)
+                return if (durationShort == 0) Pair(true, sport) else Pair(false, sport)
             } catch (_: Exception) {
                 // fall through to short packet heuristic
             }
         }
 
-        // Short status packets (1 to 8 bytes)
+        // Short status packets (1 to 24 bytes)
         // Format A: [state: u8, sportId: u8, ...] (1=start, 2=pause, 3=resume, 0/4=stop)
         // Format B: [sportId: u8, state: u8, ...]
         if (payload.size >= 2) {

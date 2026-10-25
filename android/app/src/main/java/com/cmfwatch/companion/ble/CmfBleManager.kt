@@ -138,12 +138,13 @@ class CmfBleManager(
 
     private fun noteWorkoutPacket() {
         lastWorkoutPacketMs = System.currentTimeMillis()
+        _isWorkoutActive.value = true
         if (workoutWatchdogJob == null || workoutWatchdogJob?.isActive != true) {
             workoutWatchdogJob = managerScope.launch {
                 while (_isWorkoutActive.value) {
                     delay(1000)
-                    if (_isWorkoutActive.value && System.currentTimeMillis() - lastWorkoutPacketMs > 4000) {
-                        Log.i(TAG, "Workout watchdog: 4s packet silence detected. Ending live workout session...")
+                    if (_isWorkoutActive.value && System.currentTimeMillis() - lastWorkoutPacketMs > 12000) {
+                        Log.i(TAG, "Workout watchdog: 12s packet silence detected. Ending live workout session...")
                         _isWorkoutActive.value = false
                         _liveWorkoutHeartRate.value = null
                         triggerSync()
@@ -864,28 +865,33 @@ class CmfBleManager(
 
             // WORKOUT_SUMMARY OR LIVE WORKOUT STATUS (0x0057 or 0x0160)
             cmd1 == 0x0057 || cmd1 == 0x0160 -> {
-                val workout = TelemetryDecoders.decodeWorkoutSummary(payload)
-                if (workout != null && workout.durationMinutes > 0) {
-                    // Completed workout summary from watch
-                    workoutWatchdogJob?.cancel()
-                    _isWorkoutActive.value = false
-                    _liveWorkoutHeartRate.value = null
-                    managerScope.launch { _workoutFlow.emit(workout) }
-                    Log.i(TAG, "Decoded Completed Workout Summary from watch: ${workout.type} (${workout.durationMinutes} mins)")
+                val liveStatus = if (payload.size < 28) TelemetryDecoders.decodeLiveWorkoutStatus(payload) else null
+                if (liveStatus != null) {
+                    val (isActive, sport) = liveStatus
+                    _activeWorkoutType.value = sport.displayName
+                    if (isActive) {
+                        _isWorkoutActive.value = true
+                        noteWorkoutPacket()
+                    } else {
+                        workoutWatchdogJob?.cancel()
+                        _isWorkoutActive.value = false
+                        _liveWorkoutHeartRate.value = null
+                        triggerSync()
+                    }
+                    Log.i(TAG, "Decoded Live Workout Status from watch: active=$isActive, sport=${sport.displayName}")
                 } else {
-                    // Live workout status update from watch (Sport started/paused/resumed/stopped on watch)
-                    val status = TelemetryDecoders.decodeLiveWorkoutStatus(payload)
-                    if (status != null) {
-                        val (isActive, sport) = status
-                        _isWorkoutActive.value = isActive
-                        _activeWorkoutType.value = sport.displayName
-                        if (isActive) {
-                            noteWorkoutPacket()
-                        } else {
-                            workoutWatchdogJob?.cancel()
-                            _liveWorkoutHeartRate.value = null
+                    // Completed workout summary batch from watch (32 or 54 bytes per record)
+                    val workouts = TelemetryDecoders.decodeWorkoutSummaryBatch(payload)
+                    if (workouts.isNotEmpty()) {
+                        workoutWatchdogJob?.cancel()
+                        _isWorkoutActive.value = false
+                        _liveWorkoutHeartRate.value = null
+                        managerScope.launch {
+                            for (w in workouts) {
+                                _workoutFlow.emit(w)
+                            }
                         }
-                        Log.i(TAG, "Decoded Live Workout Status from watch: active=$isActive, sport=${sport.displayName}")
+                        Log.i(TAG, "Decoded ${workouts.size} Completed Workout Summaries from watch. Latest: ${workouts.last().type} (${workouts.last().durationSeconds}s)")
                     }
                 }
             }

@@ -160,7 +160,7 @@ class BleUnitTest {
 
     @Test
     fun testDecodeWorkoutSummaryPackedStructFreeTraining() {
-        val buffer = java.nio.ByteBuffer.allocate(24).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val buffer = java.nio.ByteBuffer.allocate(32).order(java.nio.ByteOrder.LITTLE_ENDIAN)
         buffer.putInt(1700000000) // startSec
         buffer.putShort(96.toShort()) // duration: 96 seconds
         buffer.put(11.toByte()) // sport type: Free Training (11)
@@ -170,6 +170,7 @@ class BleUnitTest {
         buffer.put(105.toByte()) // avg HR: 105
         buffer.put(120.toByte()) // max HR: 120
         buffer.putShort(0.toShort()) // avg pace: 0
+        buffer.put(ByteArray(8)) // padding
 
         val workout = TelemetryDecoders.decodeWorkoutSummary(buffer.array())
         assertNotNull(workout)
@@ -184,7 +185,7 @@ class BleUnitTest {
 
     @Test
     fun testDecodeWorkoutSummaryRunning() {
-        val buffer = java.nio.ByteBuffer.allocate(24).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val buffer = java.nio.ByteBuffer.allocate(32).order(java.nio.ByteOrder.LITTLE_ENDIAN)
         buffer.putInt(1700000000) // startSec
         buffer.putShort(1800.toShort()) // duration: 1800 seconds (30 min)
         buffer.put(1.toByte()) // sport type: Outdoor Run (1)
@@ -194,6 +195,7 @@ class BleUnitTest {
         buffer.put(145.toByte()) // avg HR: 145
         buffer.put(165.toByte()) // max HR: 165
         buffer.putShort(360.toShort()) // avg pace: 360 sec/km (6 min/km)
+        buffer.put(ByteArray(8)) // padding
 
         val workout = TelemetryDecoders.decodeWorkoutSummary(buffer.array())
         assertNotNull(workout)
@@ -203,5 +205,45 @@ class BleUnitTest {
         assertEquals(5.0f, workout.distanceKm, 0.001f)
         assertEquals(320, workout.caloriesKcal)
         assertEquals(145, workout.avgHr)
+    }
+
+    @Test
+    fun testDecodeWorkoutSummaryBatchMultiRecords() {
+        val buffer = java.nio.ByteBuffer.allocate(64).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        // Record 1: Old workout (Outdoor Run, 10 mins)
+        buffer.putInt(1700000000)
+        buffer.putShort(600.toShort())
+        buffer.put(1.toByte()) // Outdoor Run
+        buffer.put(0x01.toByte())
+        buffer.putInt(1500)
+        buffer.putInt(90)
+        buffer.put(130.toByte())
+        buffer.put(145.toByte())
+        buffer.putShort(400.toShort())
+        buffer.put(ByteArray(12)) // padding to 32 bytes
+
+        // Record 2: New workout (Cricket, 45 mins)
+        buffer.putInt(1700005000)
+        buffer.putShort(2700.toShort())
+        buffer.put(17.toByte()) // Cricket
+        buffer.put(0x01.toByte())
+        buffer.putInt(3000)
+        buffer.putInt(280)
+        buffer.put(140.toByte())
+        buffer.put(160.toByte())
+        buffer.putShort(0.toShort())
+        buffer.put(ByteArray(12)) // padding to 32 bytes
+
+        val batch = TelemetryDecoders.decodeWorkoutSummaryBatch(buffer.array())
+        assertEquals(2, batch.size)
+        assertEquals("Outdoor Run", batch[0].type)
+        assertEquals(600, batch[0].durationSeconds)
+        assertEquals("Cricket", batch[1].type)
+        assertEquals(2700, batch[1].durationSeconds)
+
+        val latest = TelemetryDecoders.decodeWorkoutSummary(buffer.array())
+        assertNotNull(latest)
+        assertEquals("Cricket", latest!!.type)
+        assertEquals(2700, latest.durationSeconds)
     }
 }

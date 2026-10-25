@@ -313,12 +313,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private fun startPeriodicSamplingTimer() {
         viewModelScope.launch {
             while (true) {
-                val pollDelay = if (_uiState.value.isWorkoutActive) 3_000L else 15_000L
-                delay(pollDelay)
+                delay(60_000) // 1 minute periodic sampling
                 if (_uiState.value.connectionState == DeviceConnectionState.CONNECTED_PAIRED) {
-                    bleManager.enableRealtimeStream()
                     if (!_uiState.value.isWorkoutActive) {
                         bleManager.fetchBattery()
+                        bleManager.enableRealtimeStream()
                     }
                 }
             }

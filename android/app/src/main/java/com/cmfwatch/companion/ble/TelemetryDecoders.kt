@@ -30,82 +30,243 @@ object TelemetryDecoders {
     }
 
     /**
-     * Decode 8-byte Heart Rate sample payload: (epoch_sec: u32_le, bpm: u32_le).
+     * Decode Heart Rate sample payload: returns the latest sample in the payload.
      */
     fun decodeHeartRate(payload: ByteArray, opcode: String = "0x0053"): HeartRateSample? {
-        if (payload.size < 8) return null
-        val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
-        val epochSec = buffer.int.toLong() and 0xFFFFFFFFL
-        val bpm = buffer.int and 0xFF
-        if (bpm <= 0 || bpm > 255) return null
-        val timestamp = Instant.ofEpochSecond(epochSec)
-        return HeartRateSample(timestamp = timestamp, bpm = bpm, opcode = opcode)
+        val batch = decodeHeartRateBatch(payload, opcode)
+        return batch.lastOrNull()
     }
 
     /**
-     * Decode 32-byte Step Interval payload: (epoch_sec: u32_le, steps: u32_le, dist_mm: u32_le, kcal_100: u32_le).
+     * Decode N x 8-byte Heart Rate sample records: (epoch_sec: u32_le, bpm: u32_le)
+     * or 5-byte records: (epoch_sec: u32_le, bpm: u8)
+     * or short 1-4 byte live push notifications: (bpm: u8).
+     * Returns all valid samples in chronological order.
+     */
+    fun decodeHeartRateBatch(payload: ByteArray, opcode: String = "0x0053"): List<HeartRateSample> {
+        val samples = mutableListOf<HeartRateSample>()
+        if (payload.isEmpty()) return samples
+
+        // Case 1: Multiples of 8 bytes: (epoch_sec: u32_le, bpm: u32_le)
+        if (payload.size >= 8 && payload.size % 8 == 0) {
+            val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+            val count = payload.size / 8
+            for (i in 0 until count) {
+                val epochSec = buffer.int.toLong() and 0xFFFFFFFFL
+                val bpm = buffer.int and 0xFF
+                // Valid human physiological heart rate (30 to 240 BPM) and modern Unix timestamp
+                if (bpm in 30..240 && epochSec > 1600000000L) {
+                    samples.add(
+                        HeartRateSample(
+                            timestamp = Instant.ofEpochSecond(epochSec),
+                            bpm = bpm,
+                            opcode = opcode
+                        )
+                    )
+                }
+            }
+            if (samples.isNotEmpty()) {
+                return samples.sortedBy { it.timestamp }
+            }
+        }
+
+        // Case 2: Multiples of 5 bytes: (epoch_sec: u32_le, bpm: u8)
+        if (payload.size >= 5 && payload.size % 5 == 0) {
+            val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+            val count = payload.size / 5
+            for (i in 0 until count) {
+                val epochSec = buffer.int.toLong() and 0xFFFFFFFFL
+                val bpm = buffer.get().toInt() and 0xFF
+                if (bpm in 30..240 && epochSec > 1600000000L) {
+                    samples.add(
+                        HeartRateSample(
+                            timestamp = Instant.ofEpochSecond(epochSec),
+                            bpm = bpm,
+                            opcode = opcode
+                        )
+                    )
+                }
+            }
+            if (samples.isNotEmpty()) {
+                return samples.sortedBy { it.timestamp }
+            }
+        }
+
+        // Case 3: Arbitrary buffer containing 8-byte chunks (even if trailing padding exists)
+        if (payload.size >= 8) {
+            val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+            val count = payload.size / 8
+            for (i in 0 until count) {
+                val epochSec = buffer.int.toLong() and 0xFFFFFFFFL
+                val bpm = buffer.int and 0xFF
+                if (bpm in 30..240 && epochSec > 1600000000L) {
+                    samples.add(
+                        HeartRateSample(
+                            timestamp = Instant.ofEpochSecond(epochSec),
+                            bpm = bpm,
+                            opcode = opcode
+                        )
+                    )
+                }
+            }
+            if (samples.isNotEmpty()) {
+                return samples.sortedBy { it.timestamp }
+            }
+        }
+
+        // Case 4: Real-time 1-4 byte live pulse push notification from watch
+        // When realtime stream is active, the watch pushes the live BPM directly
+        if (payload.size in 1..4) {
+            for (b in payload) {
+                val bpm = b.toInt() and 0xFF
+                if (bpm in 35..230) {
+                    samples.add(
+                        HeartRateSample(
+                            timestamp = Instant.now(),
+                            bpm = bpm,
+                            opcode = opcode
+                        )
+                    )
+                    break
+                }
+            }
+        }
+
+        return samples
+    }
+
+    /**
+     * Decode resting heart rate payload (opcode 0x00DA 0x0001).
+     * Supports 5-byte records (ts: u32 LE, hr: u8) or 8-byte records (ts: u32 LE, hr: u32 LE).
+     */
+    fun decodeRestingHeartRateBatch(payload: ByteArray): List<HeartRateSample> {
+        val samples = mutableListOf<HeartRateSample>()
+        if (payload.isEmpty()) return samples
+        if (payload.size % 5 == 0 && payload.isNotEmpty()) {
+            val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+            val count = payload.size / 5
+            for (i in 0 until count) {
+                val epochSec = buffer.int.toLong() and 0xFFFFFFFFL
+                val hr = buffer.get().toInt() and 0xFF
+                if (hr in 30..200 && epochSec > 1600000000L) {
+                    samples.add(
+                        HeartRateSample(
+                            timestamp = Instant.ofEpochSecond(epochSec),
+                            bpm = hr,
+                            opcode = "0x00DA"
+                        )
+                    )
+                }
+            }
+            return samples.sortedBy { it.timestamp }
+        }
+        return decodeHeartRateBatch(payload, "0x00DA")
+    }
+
+    /**
+     * Decode Step Interval payload: returns the latest interval in the payload.
      */
     fun decodeStepInterval(payload: ByteArray): StepInterval? {
-        if (payload.size < 16) return null
-        val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
-        val epochSec = buffer.int.toLong() and 0xFFFFFFFFL
-        val steps = buffer.int
-        val distMm = buffer.int
-        val kcal100 = buffer.int
-
-        val timestamp = Instant.ofEpochSecond(epochSec)
-        val distMeters = distMm / 1000.0f
-        val caloriesKcal = kcal100 / 100.0f
-
-        return StepInterval(
-            timestamp = timestamp,
-            steps = steps.coerceAtLeast(0),
-            distanceMeters = distMeters.coerceAtLeast(0.0f),
-            caloriesKcal = caloriesKcal.coerceAtLeast(0.0f)
-        )
+        val batch = decodeStepIntervalBatch(payload)
+        return batch.lastOrNull()
     }
 
     /**
-     * Decode 8-byte Stress sample payload: (epoch_sec: u32_le, score: u32_le).
+     * Decode N x 32-byte or 16-byte Step Interval records:
+     * (epoch_sec: u32_le, steps: u32_le, dist_mm: u32_le, kcal_100: u32_le).
+     */
+    fun decodeStepIntervalBatch(payload: ByteArray): List<StepInterval> {
+        val intervals = mutableListOf<StepInterval>()
+        if (payload.size < 16) return intervals
+        val recordSize = if (payload.size % 32 == 0) 32 else 16
+        val count = payload.size / recordSize
+        val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+
+        for (i in 0 until count) {
+            val epochSec = buffer.int.toLong() and 0xFFFFFFFFL
+            val steps = buffer.int
+            val distMm = buffer.int
+            val kcal100 = buffer.int
+            if (recordSize == 32) {
+                // Skip 16 reserved padding bytes
+                buffer.position(buffer.position() + 16)
+            }
+
+            if (epochSec > 1600000000L && steps >= 0) {
+                intervals.add(
+                    StepInterval(
+                        timestamp = Instant.ofEpochSecond(epochSec),
+                        steps = steps.coerceAtLeast(0),
+                        distanceMeters = (distMm / 1000.0f).coerceAtLeast(0.0f),
+                        caloriesKcal = (kcal100 / 100.0f).coerceAtLeast(0.0f)
+                    )
+                )
+            }
+        }
+        return intervals.sortedBy { it.timestamp }
+    }
+
+    /**
+     * Decode Stress sample payload: returns latest sample.
      */
     fun decodeStress(payload: ByteArray): StressSample? {
-        if (payload.size < 8) return null
-        val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
-        val epochSec = buffer.int.toLong() and 0xFFFFFFFFL
-        val score = buffer.int and 0xFF
-        val timestamp = Instant.ofEpochSecond(epochSec)
-        return StressSample(timestamp = timestamp, score = score.coerceIn(1, 99))
+        val batch = decodeStressBatch(payload)
+        return batch.lastOrNull()
     }
 
     /**
-     * Decode SpO2 sample payload (supports 8-byte, 4-byte, or raw byte push payloads).
+     * Decode N x 8-byte Stress sample records: (epoch_sec: u32_le, score: u32_le).
+     */
+    fun decodeStressBatch(payload: ByteArray): List<StressSample> {
+        val samples = mutableListOf<StressSample>()
+        if (payload.size < 8) return samples
+        val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+        val count = payload.size / 8
+        for (i in 0 until count) {
+            val epochSec = buffer.int.toLong() and 0xFFFFFFFFL
+            val score = buffer.int and 0xFF
+            if (score in 1..99 && epochSec > 1600000000L) {
+                samples.add(StressSample(timestamp = Instant.ofEpochSecond(epochSec), score = score))
+            }
+        }
+        return samples.sortedBy { it.timestamp }
+    }
+
+    /**
+     * Decode SpO2 sample payload (supports 8-byte batch, 4-byte, or raw byte push payloads).
      */
     fun decodeSpO2(payload: ByteArray): SpO2Sample? {
-        if (payload.isEmpty()) return null
+        val batch = decodeSpO2Batch(payload)
+        return batch.lastOrNull()
+    }
 
-        // 1. Try standard 8-byte payload (epochSec + percentage)
+    /**
+     * Decode N x 8-byte SpO2 sample records: (epoch_sec: u32_le, percentage: u32_le).
+     */
+    fun decodeSpO2Batch(payload: ByteArray): List<SpO2Sample> {
+        val samples = mutableListOf<SpO2Sample>()
         if (payload.size >= 8) {
-            try {
-                val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+            val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+            val count = payload.size / 8
+            for (i in 0 until count) {
                 val epochSec = buffer.int.toLong() and 0xFFFFFFFFL
                 val percentage = buffer.int and 0xFF
                 if (percentage in 50..100 && epochSec > 1600000000L) {
-                    return SpO2Sample(timestamp = Instant.ofEpochSecond(epochSec), percentage = percentage)
+                    samples.add(SpO2Sample(timestamp = Instant.ofEpochSecond(epochSec), percentage = percentage))
                 }
-            } catch (e: Exception) {
-                // Fallthrough to fallback scanner
             }
+            if (samples.isNotEmpty()) return samples.sortedBy { it.timestamp }
         }
 
-        // 2. Fallback scanner: Find any byte in 50..100 range representing SpO2 %
+        // Fallback scanner for single raw byte push
         for (b in payload) {
             val valU8 = b.toInt() and 0xFF
             if (valU8 in 50..100) {
-                return SpO2Sample(timestamp = Instant.now(), percentage = valU8)
+                samples.add(SpO2Sample(timestamp = Instant.now(), percentage = valU8))
+                break
             }
         }
-
-        return null
+        return samples
     }
 
     /**

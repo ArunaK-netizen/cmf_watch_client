@@ -97,23 +97,14 @@ fun HomeScreen(
     val moveGoal = goals.caloriesGoal
     val moveProgress = (moveVal.toFloat() / moveGoal.toFloat()).coerceIn(0f, 1.2f)
 
-    val exerciseVal = remember(summary.workoutsToday, summary.todaySteps) {
-        val fromWorkouts = summary.workoutsToday.sumOf { it.durationMinutes }
-        when {
-            fromWorkouts > 0 -> fromWorkouts
-            summary.todaySteps != null && summary.todaySteps > 0 -> (summary.todaySteps / 120).coerceAtMost(90)
-            else -> 0
-        }
+    val exerciseVal = remember(summary.workoutsToday) {
+        // Exercise minutes ONLY come from actual recorded workouts — no fake estimation
+        summary.workoutsToday.sumOf { it.durationMinutes }
     }
     val exerciseGoal = goals.exerciseMinutesGoal
     val exerciseProgress = (exerciseVal.toFloat() / exerciseGoal.toFloat()).coerceIn(0f, 1.2f)
 
-    val standVal = remember(summary.stepIntervalsToday) {
-        summary.stepIntervalsToday
-            .map { it.timestamp.atZone(ZoneId.systemDefault()).hour }
-            .distinct()
-            .size
-    }
+    val standVal = summary.activeStandHours
     val standGoal = goals.standHoursGoal
     val standProgress = (standVal.toFloat() / standGoal.toFloat()).coerceIn(0f, 1.2f)
 
@@ -858,23 +849,17 @@ private fun ThinProgress(progress: Float, color: Color) {
 private fun Sparkline(points: List<Float>, color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         if (points.size < 2) {
-            val w = size.width
-            val h = size.height
-            val line = Path().apply {
-                moveTo(0f, h * 0.75f)
-                cubicTo(w * 0.12f, h * 0.88f, w * 0.22f, h * 0.45f, w * 0.32f, h * 0.56f)
-                cubicTo(w * 0.42f, h * 0.68f, w * 0.48f, h * 0.38f, w * 0.58f, h * 0.44f)
-                cubicTo(w * 0.70f, h * 0.52f, w * 0.78f, h * 0.72f, w * 0.88f, h * 0.38f)
-                lineTo(w, h * 0.28f)
-            }
-            val fill = Path().apply {
-                addPath(line)
-                lineTo(w, h)
-                lineTo(0f, h)
-                close()
-            }
-            drawPath(fill, color.copy(alpha = 0.10f))
-            drawPath(line, color, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+            // No data: show a flat dashed center line instead of fake bezier
+            val dashEffect = androidx.compose.ui.graphics.PathEffect
+                .dashPathEffect(floatArrayOf(8f, 6f), 0f)
+            drawLine(
+                color = color.copy(alpha = 0.25f),
+                start = Offset(0f, size.height * 0.5f),
+                end = Offset(size.width, size.height * 0.5f),
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round,
+                pathEffect = dashEffect
+            )
             return@Canvas
         }
         val min = points.min()
@@ -1160,17 +1145,23 @@ private fun LatestWorkoutSection(
 
 @Composable
 private fun RouteThumb() {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val path = Path()
-        val w = size.width
-        val h = size.height
-        drawRoundRect(Color(0xFFE8EDE4), cornerRadius = androidx.compose.ui.geometry.CornerRadius(16.dp.toPx()))
-        drawRoundRect(Color(0xFFD7E4CC), topLeft = Offset(w * 0.08f, h * 0.12f), size = Size(w * 0.38f, h * 0.42f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()))
-        drawRoundRect(Color(0xFFCDD8C6), topLeft = Offset(w * 0.52f, h * 0.38f), size = Size(w * 0.40f, h * 0.48f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()))
-        path.moveTo(w * 0.18f, h * 0.72f)
-        path.cubicTo(w * 0.28f, h * 0.30f, w * 0.45f, h * 0.78f, w * 0.58f, h * 0.40f)
-        path.cubicTo(w * 0.70f, h * 0.12f, w * 0.82f, h * 0.55f, w * 0.88f, h * 0.28f)
-        drawPath(path, CmfPrimaryContainer, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
+    // No GPS route data available — show a clean placeholder icon overlay
+    // instead of a fake generated map
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFF3F3F6))
+        )
+        Icon(
+            imageVector = Icons.Outlined.DirectionsRun,
+            contentDescription = null,
+            tint = CmfPrimaryContainer.copy(alpha = 0.35f),
+            modifier = Modifier.size(28.dp)
+        )
     }
 }
 

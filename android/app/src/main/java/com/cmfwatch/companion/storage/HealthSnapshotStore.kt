@@ -17,10 +17,16 @@ class HealthSnapshotStore(context: Context) {
             runCatching { Instant.parse(value) }.getOrNull()
         }
 
+        val hrTimestamp = preferences.getString(KEY_HR_TIMESTAMP, null)?.let { value ->
+            runCatching { Instant.parse(value) }.getOrNull()
+        }
+
         val isSameDay = savedDate == todayStr
+        val isHrRecent = hrTimestamp != null && hrTimestamp.isAfter(Instant.now().minus(java.time.Duration.ofHours(24)))
 
         return DashboardSummary(
-            latestHeartRate = if (isSameDay) preferences.getNullableInt(KEY_HEART_RATE) else null,
+            // Production-grade validation: never display stale/historical heart rate as current
+            latestHeartRate = if (isSameDay && isHrRecent) preferences.getNullableInt(KEY_HEART_RATE) else null,
             restingHeartRate = if (isSameDay) preferences.getNullableInt(KEY_RESTING_HEART_RATE) else null,
             latestSpO2 = if (isSameDay) preferences.getNullableInt(KEY_SPO2) else null,
             todaySteps = if (isSameDay) preferences.getNullableInt(KEY_STEPS) else null,
@@ -34,7 +40,7 @@ class HealthSnapshotStore(context: Context) {
         )
     }
 
-    fun save(summary: DashboardSummary) {
+    fun save(summary: DashboardSummary, hrSampleTimestamp: Instant? = null) {
         val todayStr = LocalDate.now().toString()
         preferences.edit()
             .putString(KEY_SNAPSHOT_DATE, todayStr)
@@ -48,6 +54,9 @@ class HealthSnapshotStore(context: Context) {
             .putNullableInt(KEY_STRESS, summary.latestStressScore)
             .putNullableInt(KEY_BATTERY, summary.deviceBatteryLevel)
             .apply {
+                if (hrSampleTimestamp != null) {
+                    putString(KEY_HR_TIMESTAMP, hrSampleTimestamp.toString())
+                }
                 summary.lastSyncedAt?.let { putString(KEY_LAST_SYNCED_AT, it.toString()) }
                     ?: remove(KEY_LAST_SYNCED_AT)
             }
@@ -74,6 +83,7 @@ class HealthSnapshotStore(context: Context) {
 
     private companion object {
         const val KEY_SNAPSHOT_DATE = "snapshot_date"
+        const val KEY_HR_TIMESTAMP = "latest_heart_rate_timestamp"
         const val KEY_HEART_RATE = "latest_heart_rate"
         const val KEY_RESTING_HEART_RATE = "resting_heart_rate"
         const val KEY_SPO2 = "latest_spo2"

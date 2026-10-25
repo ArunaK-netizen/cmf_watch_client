@@ -27,10 +27,21 @@ class LocalTelemetryStore(context: Context) {
     private val preferences = context.getSharedPreferences("cmf_telemetry_store", Context.MODE_PRIVATE)
 
     fun saveHeartRateSample(sample: HeartRateSample) {
-        val samples = getHeartRateSamples().toMutableList()
-        samples.add(sample)
-        // Keep last 1000 samples
-        val trimmed = if (samples.size > 1000) samples.takeLast(1000) else samples
+        saveHeartRateSamples(listOf(sample))
+    }
+
+    fun saveHeartRateSamples(newSamples: List<HeartRateSample>) {
+        if (newSamples.isEmpty()) return
+        val existing = getHeartRateSamples().toMutableList()
+        val existingTimestamps = existing.map { it.timestamp }.toHashSet()
+        val toAdd = newSamples.filter { it.timestamp !in existingTimestamps && it.bpm in 30..240 }
+        if (toAdd.isEmpty()) return
+
+        existing.addAll(toAdd)
+        existing.sortBy { it.timestamp }
+
+        // Keep last 1500 samples
+        val trimmed = if (existing.size > 1500) existing.takeLast(1500) else existing
 
         val array = JSONArray()
         trimmed.forEach { item ->
@@ -42,6 +53,27 @@ class LocalTelemetryStore(context: Context) {
         }
 
         preferences.edit().putString(KEY_HR_SAMPLES, array.toString()).apply()
+    }
+
+    fun pruneOutdatedHeartRateSamples() {
+        val sixtyDaysAgo = Instant.now().minus(java.time.Duration.ofDays(60))
+        val current = getHeartRateSamples()
+        val valid = current.filter { it.timestamp.isAfter(sixtyDaysAgo) && it.bpm in 30..240 }
+        if (valid.size != current.size) {
+            val array = JSONArray()
+            valid.forEach { item ->
+                val obj = JSONObject()
+                obj.put("timestamp", item.timestamp.toString())
+                obj.put("bpm", item.bpm)
+                obj.put("opcode", item.opcode)
+                array.put(obj)
+            }
+            preferences.edit().putString(KEY_HR_SAMPLES, array.toString()).apply()
+        }
+    }
+
+    fun clearAll() {
+        preferences.edit().clear().apply()
     }
 
     fun getHeartRateSamples(): List<HeartRateSample> {
@@ -70,6 +102,10 @@ class LocalTelemetryStore(context: Context) {
 
     fun saveStepInterval(interval: StepInterval) {
         val list = getStepIntervals().toMutableList()
+        // Deduplicate: skip if a step interval with the exact same timestamp already exists
+        if (list.any { it.timestamp == interval.timestamp }) {
+            return
+        }
         list.add(interval)
         val trimmed = if (list.size > 1000) list.takeLast(1000) else list
 
@@ -125,6 +161,10 @@ class LocalTelemetryStore(context: Context) {
 
     fun saveWorkout(workout: SavedWorkout) {
         val list = getSavedWorkouts().toMutableList()
+        // Deduplicate: skip if a workout with the exact same start time already exists
+        if (list.any { it.startTime == workout.startTime }) {
+            return
+        }
         list.add(workout)
         val trimmed = if (list.size > 100) list.takeLast(100) else list
 
@@ -179,6 +219,10 @@ class LocalTelemetryStore(context: Context) {
 
     fun saveSleepSession(session: SleepSession) {
         val sessions = getSleepSessions().toMutableList()
+        // Deduplicate: skip if a session with the exact same start time already exists
+        if (sessions.any { it.startTime == session.startTime }) {
+            return
+        }
         sessions.add(session)
         val trimmed = if (sessions.size > 50) sessions.takeLast(50) else sessions
 

@@ -4,7 +4,10 @@ import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.os.Build
 import android.util.Log
@@ -79,22 +82,34 @@ class CmfBleManager(
     private val _batteryState = MutableStateFlow<BatteryState?>(null)
     val batteryState: StateFlow<BatteryState?> = _batteryState.asStateFlow()
 
-    private val _heartRateFlow = MutableSharedFlow<HeartRateSample>(extraBufferCapacity = 64)
+    private val _latestHeartRate = MutableStateFlow<Int?>(null)
+    val latestHeartRate: StateFlow<Int?> = _latestHeartRate.asStateFlow()
+
+    private val _restingHeartRate = MutableStateFlow<Int?>(null)
+    val restingHeartRate: StateFlow<Int?> = _restingHeartRate.asStateFlow()
+
+    private val _isWorkoutActive = MutableStateFlow(false)
+    val isWorkoutActive: StateFlow<Boolean> = _isWorkoutActive.asStateFlow()
+
+    private val _liveWorkoutHeartRate = MutableStateFlow<Int?>(null)
+    val liveWorkoutHeartRate: StateFlow<Int?> = _liveWorkoutHeartRate.asStateFlow()
+
+    private val _heartRateFlow = MutableSharedFlow<HeartRateSample>(extraBufferCapacity = 256)
     val heartRateFlow: SharedFlow<HeartRateSample> = _heartRateFlow.asSharedFlow()
 
-    private val _stepFlow = MutableSharedFlow<StepInterval>(extraBufferCapacity = 64)
+    private val _stepFlow = MutableSharedFlow<StepInterval>(extraBufferCapacity = 256)
     val stepFlow: SharedFlow<StepInterval> = _stepFlow.asSharedFlow()
 
-    private val _spO2Flow = MutableSharedFlow<SpO2Sample>(extraBufferCapacity = 64)
+    private val _spO2Flow = MutableSharedFlow<SpO2Sample>(extraBufferCapacity = 256)
     val spO2Flow: SharedFlow<SpO2Sample> = _spO2Flow.asSharedFlow()
 
-    private val _stressFlow = MutableSharedFlow<StressSample>(extraBufferCapacity = 64)
+    private val _stressFlow = MutableSharedFlow<StressSample>(extraBufferCapacity = 256)
     val stressFlow: SharedFlow<StressSample> = _stressFlow.asSharedFlow()
 
-    private val _sleepFlow = MutableSharedFlow<com.cmfwatch.companion.domain.models.SleepSession>(extraBufferCapacity = 64)
+    private val _sleepFlow = MutableSharedFlow<com.cmfwatch.companion.domain.models.SleepSession>(extraBufferCapacity = 128)
     val sleepFlow: SharedFlow<com.cmfwatch.companion.domain.models.SleepSession> = _sleepFlow.asSharedFlow()
 
-    private val _workoutFlow = MutableSharedFlow<com.cmfwatch.companion.storage.SavedWorkout>(extraBufferCapacity = 64)
+    private val _workoutFlow = MutableSharedFlow<com.cmfwatch.companion.storage.SavedWorkout>(extraBufferCapacity = 128)
     val workoutFlow: SharedFlow<com.cmfwatch.companion.storage.SavedWorkout> = _workoutFlow.asSharedFlow()
 
     private val frameAssembler = FrameAssembler()
@@ -110,6 +125,49 @@ class CmfBleManager(
     private var authHandshakeActive = false
     private var subscribeTimeoutJob: Job? = null
     private var pendingGattWrite: CompletableDeferred<Boolean>? = null
+
+    // System-level Bluetooth bond management
+    private var bondStateReceiver: BroadcastReceiver? = null
+    private var pendingBondDevice: BluetoothDevice? = null
+
+    private val _isPairedWithWatch = MutableStateFlow(hasSavedPairing())
+    val isPairedWithWatch: StateFlow<Boolean> = _isPairedWithWatch.asStateFlow()
+
+    private val _connectedDeviceName = MutableStateFlow(loadSavedDeviceName())
+    val connectedDeviceName: StateFlow<String?> = _connectedDeviceName.asStateFlow()
+
+    fun hasSavedPairing(): Boolean {
+        return loadStoredAuthKey() != null && appPrefs.getString("paired_device_mac", null) != null
+    }
+
+    private fun loadSavedDeviceName(): String? {
+        return appPrefs.getString("paired_device_name", null)
+    }
+
+    fun getSavedDeviceMac(): String? {
+        return appPrefs.getString("paired_device_mac", null)
+    }
+
+    private fun savePairedDevice(macAddress: String, name: String?) {
+        appPrefs.edit()
+            .putString("paired_device_mac", macAddress)
+            .putString("paired_device_name", name ?: "CMF Watch")
+            .apply()
+        _isPairedWithWatch.value = true
+        _connectedDeviceName.value = name ?: "CMF Watch"
+    }
+
+    fun clearPairedDevice() {
+        appPrefs.edit()
+            .remove("paired_device_mac")
+            .remove("paired_device_name")
+            .remove("auth_key_hex")
+            .apply()
+        authKey = null
+        sessionKey = null
+        _isPairedWithWatch.value = false
+        _connectedDeviceName.value = null
+    }
 
     private fun parseHexKey(hex: String): ByteArray {
         return hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
@@ -140,18 +198,22 @@ class CmfBleManager(
             return
         }
 
-        val hasScanPermission = ContextCompat.checkSelfPermission(
-            context,
-            android.Manifest.permission.BLUETOOTH_SCAN
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        // Android 12+ (API 31): BLUETOOTH_SCAN is sufficient with neverForLocation flag
+        // Android 11 and below: ACCESS_FINE_LOCATION is required for BLE scanning
+        val hasRequiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.BLUETOOTH_SCAN
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        } else {
+            ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
 
-        val hasLocationPermission = ContextCompat.checkSelfPermission(
-            context,
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-
-        if (!hasScanPermission || !hasLocationPermission) {
-            Log.w(TAG, "Scan cannot start: missing Bluetooth_SCAN or ACCESS_FINE_LOCATION permission.")
+        if (!hasRequiredPermissions) {
+            Log.w(TAG, "Scan cannot start: missing required BLE scan permission.")
             isScanning = false
             _connectionState.value = DeviceConnectionState.IDLE
             return
@@ -288,6 +350,7 @@ class CmfBleManager(
     fun disconnect() {
         userExplicitDisconnect = true
         stopScan()
+        unregisterBondStateReceiver()
         try {
             bluetoothGatt?.disconnect()
             bluetoothGatt?.close()
@@ -302,15 +365,29 @@ class CmfBleManager(
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
-                Log.i(TAG, "GATT connected! Discovering services directly...")
+                Log.i(TAG, "GATT connected! Proceeding directly to service discovery (bond after auth).")
                 _connectionState.value = DeviceConnectionState.CONNECTED
+
+                // Store the device name for UI display
+                val deviceName = try { gatt.device.name } catch (_: SecurityException) { null }
+                if (deviceName != null) {
+                    _connectedDeviceName.value = deviceName
+                }
+
+                // Always go straight to service discovery.
+                // System-level createBond() is deferred until AFTER the watch's
+                // own app-level authentication completes (AUTHENTICATED_CONFIRM_REPLY 0xFFFF/0x0004
+                // or first-time pairing success 0xFFFF/0x0048). CMF watches reject
+                // bonding before their proprietary auth handshake finishes.
                 try {
                     gatt.discoverServices()
                 } catch (e: SecurityException) {
-                    Log.e(TAG, "SecurityException discovering services: ${e.message}")
+                    Log.e(TAG, "SecurityException during discoverServices: ${e.message}")
+                    _connectionState.value = DeviceConnectionState.ERROR
                 }
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.w(TAG, "GATT disconnected. Status: $status")
+                unregisterBondStateReceiver()
                 _connectionState.value = DeviceConnectionState.DISCONNECTED
 
                 // Auto-reconnect with exponential backoff if link dropped unexpectedly without explicit user disconnect
@@ -609,6 +686,14 @@ class CmfBleManager(
                 persistAuthKey()
                 sessionKey = authKey
                 Log.i(TAG, "First-time pairing verified. Auth key derived successfully and saved locally.")
+
+                // Save paired device info for persistent pairing state
+                val mac = lastConnectedMac ?: bluetoothGatt?.device?.address
+                val name = try { bluetoothGatt?.device?.name } catch (_: SecurityException) { null }
+                if (mac != null) {
+                    savePairedDevice(mac, name)
+                }
+
                 _connectionState.value = DeviceConnectionState.CONNECTED_PAIRED
                 startSessionHandshake()
             }
@@ -636,17 +721,25 @@ class CmfBleManager(
                 Log.i(TAG, "Received AUTHENTICATED_CONFIRM_REPLY (0xFFFF 0x0004). Authentication COMPLETE!")
                 _connectionState.value = DeviceConnectionState.CONNECTED_PAIRED
                 reconnectAttemptCount = 0
-                try {
-                    bluetoothGatt?.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
-                } catch (e: SecurityException) {
-                    Log.w(TAG, "Could not set connection priority: ${e.message}")
+
+                // Save paired device info for persistent pairing state
+                val mac = lastConnectedMac ?: bluetoothGatt?.device?.address
+                val name = try { bluetoothGatt?.device?.name } catch (_: SecurityException) { null }
+                if (mac != null) {
+                    savePairedDevice(mac, name)
                 }
+
                 managerScope.launch {
                     setDeviceTime()
                     delay(500)
                     fetchBattery()
                     delay(500)
-                    // Perform bulk historical sync only (do NOT keep 24/7 live push streaming active)
+                    // Enable live realtime telemetry push stream from watch
+                    enableRealtimeStream()
+                    delay(1000)
+                    // NOW initiate system bond after GATT traffic has stabilized
+                    initiateSystemBondAfterAuth()
+                    delay(1000)
                     triggerSync()
                 }
             }
@@ -660,38 +753,78 @@ class CmfBleManager(
                 }
             }
 
-            // HEART_RATE (0x0053, 0x00DA, 0x00E0)
-            cmd1 == 0x0053 || cmd1 == 0x00DA || cmd1 == 0x00E0 -> {
-                val hr = TelemetryDecoders.decodeHeartRate(payload, "0x%04X".format(cmd1))
-                if (hr != null) {
-                    managerScope.launch { _heartRateFlow.emit(hr) }
-                    Log.i(TAG, "Decoded Heart Rate sample: ${hr.bpm} BPM at ${hr.timestamp}")
+            // HEART_RATE: 0x0053 (Realtime / Historical HR Sync), 0x00E0 (Live Workout HR Stream)
+            cmd1 == 0x0053 || cmd1 == 0x00E0 -> {
+                val isWorkout = (cmd1 == 0x00E0)
+                val opcodeStr = "0x%04X".format(cmd1)
+                val samples = TelemetryDecoders.decodeHeartRateBatch(payload, opcodeStr)
+                if (samples.isNotEmpty()) {
+                    val newest = samples.last()
+                    _latestHeartRate.value = newest.bpm
+                    if (isWorkout) {
+                        _isWorkoutActive.value = true
+                        _liveWorkoutHeartRate.value = newest.bpm
+                    }
+                    managerScope.launch {
+                        for (sample in samples) {
+                            _heartRateFlow.emit(sample)
+                        }
+                    }
+                    Log.i(TAG, "Decoded HR batch (${samples.size} samples, latest: ${newest.bpm} BPM at ${newest.timestamp}, workout=$isWorkout)")
+                }
+            }
+
+            // RESTING_HEART_RATE (0x00DA)
+            cmd1 == 0x00DA -> {
+                val restingSamples = TelemetryDecoders.decodeRestingHeartRateBatch(payload)
+                if (restingSamples.isNotEmpty()) {
+                    val newest = restingSamples.last()
+                    _restingHeartRate.value = newest.bpm
+                    managerScope.launch {
+                        for (sample in restingSamples) {
+                            _heartRateFlow.emit(sample)
+                        }
+                    }
+                    Log.i(TAG, "Decoded Resting HR batch (${restingSamples.size} samples, resting: ${newest.bpm} BPM)")
                 }
             }
 
             // SPO2 (0x0055, 0x00DB, 0x00E1)
             cmd1 == 0x0055 || cmd1 == 0x00DB || cmd1 == 0x00E1 -> {
-                val spO2 = TelemetryDecoders.decodeSpO2(payload)
-                if (spO2 != null) {
-                    managerScope.launch { _spO2Flow.emit(spO2) }
-                    Log.i(TAG, "Decoded SpO2 sample: ${spO2.percentage}% at ${spO2.timestamp}")
+                val samples = TelemetryDecoders.decodeSpO2Batch(payload)
+                if (samples.isNotEmpty()) {
+                    managerScope.launch {
+                        for (sample in samples) {
+                            _spO2Flow.emit(sample)
+                        }
+                    }
+                    Log.i(TAG, "Decoded SpO2 batch (${samples.size} samples, latest: ${samples.last().percentage}%)")
                 }
             }
 
             // STRESS (0x009D 0x0001)
             cmd1 == 0x009D && cmd2 == 0x0001 -> {
-                val stress = TelemetryDecoders.decodeStress(payload)
-                if (stress != null) {
-                    managerScope.launch { _stressFlow.emit(stress) }
-                    Log.i(TAG, "Decoded stress sample: ${stress.score} at ${stress.timestamp}")
+                val samples = TelemetryDecoders.decodeStressBatch(payload)
+                if (samples.isNotEmpty()) {
+                    managerScope.launch {
+                        for (sample in samples) {
+                            _stressFlow.emit(sample)
+                        }
+                    }
+                    Log.i(TAG, "Decoded Stress batch (${samples.size} samples, latest: ${samples.last().score})")
                 }
             }
 
-            // ACTIVITY_DATA (0x0056)
+            // ACTIVITY_DATA / STEP_INTERVALS (0x0056)
             cmd1 == 0x0056 -> {
-                val interval = TelemetryDecoders.decodeStepInterval(payload)
-                if (interval != null) {
-                    managerScope.launch { _stepFlow.emit(interval) }
+                val intervals = TelemetryDecoders.decodeStepIntervalBatch(payload)
+                if (intervals.isNotEmpty()) {
+                    managerScope.launch {
+                        for (interval in intervals) {
+                            _stepFlow.emit(interval)
+                        }
+                    }
+                    Log.i(TAG, "Decoded StepInterval batch (${intervals.size} intervals)")
                 }
             }
 
@@ -708,6 +841,9 @@ class CmfBleManager(
             cmd1 == 0x0057 || cmd1 == 0x0160 -> {
                 val workout = TelemetryDecoders.decodeWorkoutSummary(payload)
                 if (workout != null) {
+                    // Mark live workout as finished
+                    _isWorkoutActive.value = false
+                    _liveWorkoutHeartRate.value = null
                     managerScope.launch { _workoutFlow.emit(workout) }
                     Log.i(TAG, "Decoded Workout Summary: ${workout.type} (${workout.durationMinutes} mins)")
                 }
@@ -766,11 +902,36 @@ class CmfBleManager(
         sendFrame(0xFFFF, 0x8006, byteArrayOf(0x01), useEncryption = true)
     }
 
+    fun startWorkoutMode() {
+        managerScope.launch {
+            Log.i(TAG, "Starting Live Workout Mode: enabling high-frequency stream and workout telemetry...")
+            _isWorkoutActive.value = true
+            enableRealtimeStream()
+            delay(300)
+            sendFrame(0x00E0, 0x8001, byteArrayOf(0x01), useEncryption = true)
+        }
+    }
+
+    fun stopWorkoutMode() {
+        managerScope.launch {
+            Log.i(TAG, "Stopping Live Workout Mode...")
+            _isWorkoutActive.value = false
+            _liveWorkoutHeartRate.value = null
+            sendFrame(0x00E0, 0x8001, byteArrayOf(0x00), useEncryption = true)
+            delay(300)
+            triggerSync()
+        }
+    }
+
     fun triggerSync() {
         managerScope.launch {
             _connectionState.value = DeviceConnectionState.SYNCING
+            enableRealtimeStream()
+            delay(300)
+            fetchBattery()
+            delay(300)
             sendFrame(0xFFFF, 0x8005, byteArrayOf(0xA5.toByte()), useEncryption = true) // ACTIVITY_FETCH_1
-            delay(3000)
+            delay(2500)
             _connectionState.value = DeviceConnectionState.CONNECTED_PAIRED
         }
     }
@@ -830,5 +991,157 @@ class CmfBleManager(
         val clean = hex.replace(" ", "").removePrefix("0x").trim()
         require(clean.length % 2 == 0) { "Invalid hex length: ${clean.length}" }
         return clean.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+    }
+
+    // ==========================================
+    // SYSTEM BLUETOOTH BOND MANAGEMENT
+    // ==========================================
+
+    /**
+     * Initiates createBond() AFTER the CMF Watch proprietary authentication is complete.
+     * This is the correct timing — CMF watches reject system-level bonding before
+     * their own app-level handshake finishes. After auth, the watch accepts the bond
+     * and the device appears in the phone's system Bluetooth settings.
+     */
+    private fun initiateSystemBondAfterAuth() {
+        val device = bluetoothGatt?.device ?: return
+        try {
+            val bondState = device.bondState
+            if (bondState == BluetoothDevice.BOND_BONDED) {
+                Log.i(TAG, "Device already bonded at system level. Skipping createBond().")
+                return
+            }
+            if (bondState == BluetoothDevice.BOND_BONDING) {
+                Log.i(TAG, "Device already bonding at system level. Waiting for completion.")
+                pendingBondDevice = device
+                registerBondStateReceiver()
+                return
+            }
+            Log.i(TAG, "Post-auth: Initiating createBond() for system-level pairing (device will appear in phone Bluetooth settings).")
+            pendingBondDevice = device
+            registerBondStateReceiver()
+            val bondResult = device.createBond()
+            if (!bondResult) {
+                Log.w(TAG, "createBond() returned false after auth. Device may not appear in system Bluetooth settings.")
+                unregisterBondStateReceiver()
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException during post-auth createBond: ${e.message}")
+        }
+    }
+
+    private fun registerBondStateReceiver() {
+        unregisterBondStateReceiver()
+        bondStateReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                if (intent == null) return
+                if (intent.action == BluetoothDevice.ACTION_PAIRING_REQUEST) {
+                    val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    }
+                    Log.i(TAG, "ACTION_PAIRING_REQUEST received for ${device?.address}")
+                    return
+                }
+                if (intent.action != BluetoothDevice.ACTION_BOND_STATE_CHANGED) return
+                val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                }
+                if (device?.address != pendingBondDevice?.address) return
+
+                val newBondState = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)
+                val prevBondState = intent.getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.BOND_NONE)
+                Log.i(TAG, "Bond state changed: $prevBondState -> $newBondState for ${device?.address}")
+
+                when (newBondState) {
+                    BluetoothDevice.BOND_BONDED -> {
+                        Log.i(TAG, "System bond ESTABLISHED! Device will now appear in phone's Bluetooth settings.")
+                        unregisterBondStateReceiver()
+                        // No need to discover services here — services were already discovered
+                        // before authentication. This bond was created AFTER auth success.
+                    }
+                    BluetoothDevice.BOND_NONE -> {
+                        Log.w(TAG, "Bonding FAILED or was rejected by the watch. Device may not show in phone Bluetooth settings.")
+                        unregisterBondStateReceiver()
+                        // Connection still works — bonding is cosmetic for system settings visibility
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+            addAction(BluetoothDevice.ACTION_PAIRING_REQUEST)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(bondStateReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            context.registerReceiver(bondStateReceiver, filter)
+        }
+        Log.i(TAG, "Registered BondStateReceiver for system-level pairing events.")
+    }
+
+    private fun unregisterBondStateReceiver() {
+        bondStateReceiver?.let {
+            try {
+                context.unregisterReceiver(it)
+            } catch (_: IllegalArgumentException) {
+                // Receiver was not registered
+            }
+        }
+        bondStateReceiver = null
+        pendingBondDevice = null
+    }
+
+    /**
+     * Full unpair: removes system bond, clears auth key, clears saved device.
+     * The watch will disappear from phone's Bluetooth settings.
+     */
+    fun unpair() {
+        userExplicitDisconnect = true
+        stopScan()
+
+        // Remove system Bluetooth bond via reflection (no public API)
+        val mac = getSavedDeviceMac() ?: bluetoothGatt?.device?.address
+        if (mac != null) {
+            try {
+                val device = bluetoothAdapter?.getRemoteDevice(mac)
+                if (device != null && device.bondState == BluetoothDevice.BOND_BONDED) {
+                    val removeBondMethod = device.javaClass.getMethod("removeBond")
+                    val result = removeBondMethod.invoke(device) as Boolean
+                    Log.i(TAG, "removeBond() result: $result for $mac")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not remove system bond: ${e.message}")
+            }
+        }
+
+        // Disconnect GATT
+        try {
+            bluetoothGatt?.disconnect()
+            bluetoothGatt?.close()
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException during unpair disconnect: ${e.message}")
+        }
+        bluetoothGatt = null
+
+        // Clear all saved pairing data
+        clearPairedDevice()
+        _connectionState.value = DeviceConnectionState.IDLE
+        _batteryState.value = null
+        lastConnectedMac = null
+        reconnectAttemptCount = 0
+        unregisterBondStateReceiver()
+
+        Log.i(TAG, "Watch fully unpaired. System bond removed, auth key cleared.")
+    }
+
+    fun destroy() {
+        unregisterBondStateReceiver()
+        managerScope.cancel()
     }
 }

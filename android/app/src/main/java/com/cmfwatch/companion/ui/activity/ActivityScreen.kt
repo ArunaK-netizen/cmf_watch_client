@@ -71,6 +71,7 @@ import com.cmfwatch.companion.storage.SavedWorkout
 import com.cmfwatch.companion.storage.UserGoalStore
 import com.cmfwatch.companion.storage.UserGoals
 import com.cmfwatch.companion.ui.components.CmfAppHeader
+import com.cmfwatch.companion.ui.components.CmfPulseDot
 import com.cmfwatch.companion.ui.components.cmfCard
 import com.cmfwatch.companion.ui.components.isCmfConnected
 import com.cmfwatch.companion.ui.theme.CmfBackground
@@ -82,6 +83,7 @@ import com.cmfwatch.companion.ui.theme.CmfOnSecondaryFixedVariant
 import com.cmfwatch.companion.ui.theme.CmfOnSurface
 import com.cmfwatch.companion.ui.theme.CmfOnSurfaceVariant
 import com.cmfwatch.companion.ui.theme.CmfOnTertiaryFixed
+import com.cmfwatch.companion.ui.theme.CmfOutlineVariant
 import com.cmfwatch.companion.ui.theme.CmfPrimary
 import com.cmfwatch.companion.ui.theme.CmfPrimaryContainer
 import com.cmfwatch.companion.ui.theme.CmfPrimaryFixed
@@ -115,14 +117,16 @@ private val OrangeGlow = Color(0x59FF5722)
 fun ActivityScreen(
     summary: DashboardSummary,
     onAvatarClick: () -> Unit = {},
-    onStartWorkout: () -> Unit = {},
+    onStartWorkout: (String) -> Unit = {},
+    onStopWorkout: () -> Unit = {},
+    onSyncNow: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val goalStore = remember { UserGoalStore(context) }
     var goals by remember { mutableStateOf(goalStore.getGoals()) }
     var showGoalDialog by remember { mutableStateOf(false) }
-    var startLabel by remember { mutableStateOf("Start Workout") }
+    var showWorkoutInfoDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     val workouts = summary.workoutsToday
@@ -205,62 +209,68 @@ fun ActivityScreen(
                         }
                     }
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .shadow(12.dp, PillShape, ambientColor = OrangeGlow, spotColor = OrangeGlow)
-                            .clip(PillShape)
-                            .background(CmfPrimaryContainer)
-                            .clickable {
-                                onStartWorkout()
-                                scope.launch {
-                                    startLabel = "Starting GPS..."
-                                    delay(1200)
-                                    startLabel = "Start Workout"
-                                }
-                            }
-                            .padding(horizontal = 24.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Outlined.PlayCircle,
-                                contentDescription = null,
-                                tint = CmfOnPrimary,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = startLabel,
-                                fontFamily = HeadlineFontFamily,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 18.sp,
-                                color = CmfOnPrimary
-                            )
-                        }
+                    if (summary.isWorkoutActive) {
+                        LiveWorkoutCard(
+                            workoutType = summary.activeWorkoutType,
+                            bpm = summary.liveWorkoutBpm ?: summary.latestHeartRate,
+                            durationSec = summary.liveWorkoutDurationSec,
+                            todayKcal = summary.todayCaloriesKcal,
+                            todayDistKm = summary.todayDistanceKm,
+                            onStopWorkout = onStopWorkout
+                        )
+                    } else {
                         Row(
                             modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(12.dp, PillShape, ambientColor = OrangeGlow, spotColor = OrangeGlow)
                                 .clip(PillShape)
-                                .background(CmfOnPrimary.copy(alpha = 0.20f))
-                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                                .background(CmfPrimaryContainer)
+                                .clickable {
+                                    showWorkoutInfoDialog = true
+                                }
+                                .padding(horizontal = 24.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Watch,
-                                contentDescription = null,
-                                tint = CmfOnPrimary,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "CMF PRO",
-                                fontFamily = InterFontFamily,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 11.sp,
-                                letterSpacing = 0.66.sp,
-                                color = CmfOnPrimary
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Outlined.PlayCircle,
+                                    contentDescription = null,
+                                    tint = CmfOnPrimary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Start Workout",
+                                    fontFamily = HeadlineFontFamily,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 18.sp,
+                                    color = CmfOnPrimary
+                                )
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .clip(PillShape)
+                                    .background(CmfOnPrimary.copy(alpha = 0.20f))
+                                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Watch,
+                                    contentDescription = null,
+                                    tint = CmfOnPrimary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "CMF PRO",
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 11.sp,
+                                    letterSpacing = 0.66.sp,
+                                    color = CmfOnPrimary
+                                )
+                            }
                         }
                     }
                 }
@@ -311,6 +321,57 @@ fun ActivityScreen(
                 )
             }
         }
+    }
+
+    if (showWorkoutInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showWorkoutInfoDialog = false },
+            title = {
+                Text(
+                    text = "Track Workout with CMF Watch",
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = CmfOnSurface
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Real-time Live Workout Streaming:",
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        color = CmfOnSurface
+                    )
+                    Text(
+                        text = "1. You can start any activity on your CMF Watch (Sports menu -> Start). The app will automatically receive your live heart rate, HR zones, and calories.\n\n2. Or tap 'Start Live Companion Workout' below to begin streaming biometrics immediately.\n\n3. Tap 'Sync Watch Now' to force-pull all activity logs from the watch.",
+                        fontFamily = InterFontFamily,
+                        fontSize = 13.sp,
+                        color = CmfOnSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showWorkoutInfoDialog = false
+                        onStartWorkout("Outdoor Run")
+                    }
+                ) { Text("Start Live Workout") }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        onClick = {
+                            showWorkoutInfoDialog = false
+                            onSyncNow()
+                        }
+                    ) { Text("Sync Watch Now") }
+                    TextButton(onClick = { showWorkoutInfoDialog = false }) { Text("Close") }
+                }
+            }
+        )
     }
 
     if (showGoalDialog) {
@@ -706,129 +767,133 @@ private fun LatestSessionCard(
             }
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(InnerShape)
-                .background(CmfSurfaceLow)
-                .padding(12.dp)
-        ) {
-            Box(
+        if (workout == null) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(128.dp)
+                    .clip(InnerShape)
+                    .background(CmfSurfaceLow)
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                RouteMap()
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .clip(PillShape)
-                        .background(CmfSurfaceLowest.copy(alpha = 0.92f))
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Outlined.CheckCircle, null, tint = CmfTertiary, modifier = Modifier.size(13.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.Outlined.FitnessCenter,
+                    contentDescription = null,
+                    tint = CmfPrimary.copy(alpha = 0.5f),
+                    modifier = Modifier.size(36.dp)
+                )
+                Text(
+                    text = "No Workouts Recorded",
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = CmfOnSurface
+                )
+                Text(
+                    text = "Start a workout on your CMF Watch (Running, Cycling, Walk, HIIT) to view pace, heart rate, and training load analytics.",
+                    fontFamily = InterFontFamily,
+                    fontSize = 12.sp,
+                    color = CmfOnSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(InnerShape)
+                    .background(CmfSurfaceLow)
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.CheckCircle, null, tint = CmfTertiary, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = workout?.let { String.format(Locale.US, "%.2f KM VERIFIED", it.distanceKm) } ?: "-- KM",
+                        text = "${String.format(Locale.US, "%.2f", workout.distanceKm)} KM VERIFIED SESSION",
                         fontFamily = InterFontFamily,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
                         letterSpacing = 0.4.sp,
                         color = CmfOnSurface
                     )
                 }
+                Text(
+                    text = "${workout.caloriesKcal} kcal",
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = CmfPrimary
+                )
             }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(CmfSurfaceLowest.copy(alpha = 0.80f))
-                    .padding(8.dp)
-            ) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(
-                        text = "ELEVATION GAIN: --",
-                        fontFamily = InterFontFamily,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 10.sp,
-                        color = CmfOnSurfaceVariant
-                    )
-                    Text(
-                        text = "Peak --",
-                        fontFamily = InterFontFamily,
-                        fontSize = 10.sp,
-                        color = CmfOnSurfaceVariant
-                    )
-                }
-                ElevationSpark(modifier = Modifier.fillMaxWidth().height(32.dp))
+
+            val pace = formatPace(workout)
+            val km = String.format(Locale.US, "%.2f", workout.distanceKm)
+            val zone = avgHr?.let { hrZone(it) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetricCell(modifier = Modifier.weight(1f), label = "Total Distance", value = km, unit = "km")
+                MetricCell(modifier = Modifier.weight(1f), label = "Avg Pace", value = pace, unit = "/km")
             }
-        }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetricCell(
+                    modifier = Modifier.weight(1f),
+                    label = "Avg Heart Rate",
+                    value = avgHr?.toString() ?: "--",
+                    unit = "bpm",
+                    valueColor = CmfError,
+                    badge = zone
+                )
+                MetricCell(modifier = Modifier.weight(1f), label = "Duration", value = "${workout.durationMinutes}", unit = "min")
+            }
 
-        val pace = workout?.let { formatPace(it) } ?: "--"
-        val km = workout?.let { String.format(Locale.US, "%.2f", it.distanceKm) } ?: "--"
-        val zone = avgHr?.let { hrZone(it) }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCell(modifier = Modifier.weight(1f), label = "Total Distance", value = km, unit = "km")
-            MetricCell(modifier = Modifier.weight(1f), label = "Avg Pace", value = pace, unit = "/km")
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCell(
-                modifier = Modifier.weight(1f),
-                label = "Avg Heart Rate",
-                value = avgHr?.toString() ?: "--",
-                unit = "bpm",
-                valueColor = CmfError,
-                badge = zone
-            )
-            MetricCell(modifier = Modifier.weight(1f), label = "Cadence", value = "--", unit = "spm")
-        }
-
-        val kmCount = workout?.distanceKm?.toInt()?.coerceIn(1, 6) ?: 0
-        if (kmCount > 0 && workout != null) {
-            val even = formatPaceClock(workout)
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(
-                        text = "SPLITS BREAKDOWN (PACE)",
-                        fontFamily = InterFontFamily,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 11.sp,
-                        letterSpacing = 0.66.sp,
-                        color = CmfOnSurfaceVariant
-                    )
-                    Text(
-                        text = "All $kmCount km",
-                        fontFamily = InterFontFamily,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 12.sp,
-                        color = CmfPrimary
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    repeat(kmCount) { i ->
-                        val highlight = i == (kmCount / 2).coerceAtLeast(0)
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (highlight) CmfPrimaryFixed.copy(alpha = 0.40f) else CmfSurfaceLow.copy(alpha = 0.50f))
-                                .padding(vertical = 6.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "km ${i + 1}",
-                                fontFamily = InterFontFamily,
-                                fontSize = 10.sp,
-                                color = if (highlight) CmfPrimary else CmfOnSurfaceVariant
-                            )
-                            Text(
-                                text = even,
-                                fontFamily = InterFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
-                                color = if (highlight) CmfPrimary else CmfOnSurface
-                            )
+            val kmCount = workout.distanceKm.toInt().coerceIn(1, 6)
+            if (kmCount > 0) {
+                val even = formatPaceClock(workout)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(
+                            text = "ESTIMATED PACE SPLITS",
+                            fontFamily = InterFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.sp,
+                            letterSpacing = 0.66.sp,
+                            color = CmfOnSurfaceVariant
+                        )
+                        Text(
+                            text = "Avg Pace $even/km",
+                            fontFamily = InterFontFamily,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 12.sp,
+                            color = CmfPrimary
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        repeat(kmCount) { i ->
+                            val highlight = i == (kmCount / 2).coerceAtLeast(0)
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (highlight) CmfPrimaryFixed.copy(alpha = 0.40f) else CmfSurfaceLow.copy(alpha = 0.50f))
+                                    .padding(vertical = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "km ${i + 1}",
+                                    fontFamily = InterFontFamily,
+                                    fontSize = 10.sp,
+                                    color = if (highlight) CmfPrimary else CmfOnSurfaceVariant
+                                )
+                                Text(
+                                    text = even,
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = if (highlight) CmfPrimary else CmfOnSurface
+                                )
+                            }
                         }
                     }
                 }
@@ -892,54 +957,6 @@ private fun MetricCell(
                 modifier = Modifier.padding(bottom = 6.dp)
             )
         }
-    }
-}
-
-@Composable
-private fun RouteMap() {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val dash = PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
-        val grid = Color(0xFFE2E2E5)
-        listOf(0.18f, 0.50f, 0.82f).forEach { y ->
-            drawLine(grid, Offset(0f, size.height * y), Offset(size.width, size.height * y), 2f, pathEffect = dash)
-        }
-        listOf(0.16f, 0.50f, 0.84f).forEach { x ->
-            drawLine(grid, Offset(size.width * x, 0f), Offset(size.width * x, size.height), 2f, pathEffect = dash)
-        }
-        val path = Path().apply {
-            moveTo(size.width * 0.08f, size.height * 0.62f)
-            cubicTo(size.width * 0.22f, size.height * 0.58f, size.width * 0.28f, size.height * 0.22f, size.width * 0.38f, size.height * 0.24f)
-            cubicTo(size.width * 0.50f, size.height * 0.26f, size.width * 0.52f, size.height * 0.78f, size.width * 0.64f, size.height * 0.72f)
-            cubicTo(size.width * 0.74f, size.height * 0.66f, size.width * 0.82f, size.height * 0.20f, size.width * 0.90f, size.height * 0.70f)
-        }
-        drawPath(path, CmfPrimaryContainer, style = Stroke(width = 7f, cap = StrokeCap.Round))
-        drawCircle(CmfTertiaryContainer, 10f, Offset(size.width * 0.08f, size.height * 0.62f))
-        drawCircle(Color.White, 6f, Offset(size.width * 0.08f, size.height * 0.62f))
-        drawCircle(CmfPrimaryContainer, 10f, Offset(size.width * 0.90f, size.height * 0.70f))
-        drawCircle(Color.White, 5f, Offset(size.width * 0.90f, size.height * 0.70f))
-    }
-}
-
-@Composable
-private fun ElevationSpark(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val line = Path().apply {
-            moveTo(0f, size.height * 0.75f)
-            cubicTo(size.width * 0.15f, size.height * 0.70f, size.width * 0.25f, size.height * 0.40f, size.width * 0.38f, size.height * 0.45f)
-            cubicTo(size.width * 0.52f, size.height * 0.52f, size.width * 0.62f, size.height * 0.18f, size.width * 0.78f, size.height * 0.50f)
-            lineTo(size.width, size.height * 0.62f)
-        }
-        val fill = Path().apply {
-            addPath(line)
-            lineTo(size.width, size.height)
-            lineTo(0f, size.height)
-            close()
-        }
-        drawPath(
-            fill,
-            brush = Brush.verticalGradient(listOf(CmfPrimaryContainer.copy(alpha = 0.25f), Color.Transparent))
-        )
-        drawPath(line, CmfPrimaryContainer, style = Stroke(width = 3.5f, cap = StrokeCap.Round))
     }
 }
 
@@ -1244,4 +1261,193 @@ private fun hrZone(bpm: Int): String = when {
 private fun deriveLoad(minutes: Int, kcal: Int): Int {
     if (minutes <= 0 && kcal <= 0) return 0
     return (minutes * 3 + kcal / 8).coerceIn(0, 520)
+}
+
+@Composable
+private fun LiveWorkoutCard(
+    workoutType: String,
+    bpm: Int?,
+    durationSec: Int,
+    todayKcal: Int?,
+    todayDistKm: Float?,
+    onStopWorkout: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val hrs = durationSec / 3600
+    val mins = (durationSec % 3600) / 60
+    val secs = durationSec % 60
+    val timeFormatted = if (hrs > 0) {
+        "%02d:%02d:%02d".format(hrs, mins, secs)
+    } else {
+        "%02d:%02d".format(mins, secs)
+    }
+
+    val (zoneName, zoneColor) = when {
+        bpm == null || bpm < 115 -> "Zone 1 • Warm Up" to Color(0xFF8E8E93)
+        bpm in 115..135 -> "Zone 2 • Fat Burn" to Color(0xFF34C759)
+        bpm in 136..155 -> "Zone 3 • Aerobic" to Color(0xFFFF9500)
+        bpm in 156..175 -> "Zone 4 • Anaerobic" to Color(0xFFFF5722)
+        else -> "Zone 5 • Peak" to Color(0xFFFF3B30)
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .cmfCard()
+            .background(CmfSurfaceLowest)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CmfPulseDot(color = CmfPrimaryContainer, size = 10.dp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "LIVE $workoutType".uppercase(),
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    letterSpacing = 0.8.sp,
+                    color = CmfPrimaryContainer
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .clip(PillShape)
+                    .background(CmfError.copy(alpha = 0.12f))
+                    .clickable(onClick = onStopWorkout)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "End Session",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    color = CmfError
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Column {
+                Text(
+                    text = "CURRENT HEART RATE",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.sp,
+                    letterSpacing = 0.6.sp,
+                    color = CmfOnSurfaceVariant
+                )
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = bpm?.toString() ?: "--",
+                        fontFamily = HeadlineFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 44.sp,
+                        letterSpacing = (-1.0).sp,
+                        color = CmfOnSurface
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "BPM",
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                        color = CmfOnSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .clip(PillShape)
+                        .background(zoneColor.copy(alpha = 0.15f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(zoneColor)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = zoneName,
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.sp,
+                        color = zoneColor
+                    )
+                }
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "ELAPSED TIME",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.sp,
+                    letterSpacing = 0.6.sp,
+                    color = CmfOnSurfaceVariant
+                )
+                Text(
+                    text = timeFormatted,
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 32.sp,
+                    color = CmfOnSurface
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(InnerShape)
+                .background(CmfSurfaceLow)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceAround
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "${todayKcal ?: 0}",
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = CmfOnSurface
+                )
+                Text(
+                    text = "Active Kcal",
+                    fontFamily = InterFontFamily,
+                    fontSize = 11.sp,
+                    color = CmfOnSurfaceVariant
+                )
+            }
+            Box(modifier = Modifier.width(1.dp).height(28.dp).background(CmfOutlineVariant))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "%.2f".format(todayDistKm ?: 0f),
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = CmfOnSurface
+                )
+                Text(
+                    text = "Distance (km)",
+                    fontFamily = InterFontFamily,
+                    fontSize = 11.sp,
+                    color = CmfOnSurfaceVariant
+                )
+            }
+        }
+    }
 }

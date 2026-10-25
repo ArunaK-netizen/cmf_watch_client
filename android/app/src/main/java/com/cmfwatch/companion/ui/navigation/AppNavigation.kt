@@ -41,6 +41,7 @@ import com.cmfwatch.companion.ui.activity.ActivityScreen
 import com.cmfwatch.companion.ui.device.DeviceScreen
 import com.cmfwatch.companion.ui.health.HealthScreen
 import com.cmfwatch.companion.ui.home.HomeScreen
+import com.cmfwatch.companion.ui.pairing.WatchPairingScreen
 import com.cmfwatch.companion.ui.theme.CmfBackground
 import com.cmfwatch.companion.ui.theme.CmfOnSurfaceVariant
 import com.cmfwatch.companion.ui.theme.CmfPrimaryContainer
@@ -61,11 +62,26 @@ fun AppNavigationShell(
     onStartScan: () -> Unit = {},
     onConnectDevice: (String) -> Unit = {},
     onDisconnectDevice: () -> Unit = {},
+    onUnpairWatch: () -> Unit = {},
     onSyncNow: () -> Unit = {},
+    onStartWorkout: (String) -> Unit = {},
+    onStopWorkout: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var currentDestination by remember { mutableStateOf(NavDestination.TODAY) }
     var isViewingHeartRateDetail by remember { mutableStateOf(false) }
+
+    // Gate: If not paired with a watch, show the pairing screen
+    if (!summary.isPairedWithWatch) {
+        WatchPairingScreen(
+            connectionState = summary.connectionState,
+            discoveredDevices = summary.discoveredDevices,
+            onStartScan = onStartScan,
+            onConnectDevice = onConnectDevice,
+            modifier = modifier
+        )
+        return
+    }
 
     Box(
         modifier = modifier
@@ -95,13 +111,16 @@ fun AppNavigationShell(
                 NavDestination.WORKOUTS -> ActivityScreen(
                     summary = summary,
                     onAvatarClick = { currentDestination = NavDestination.DEVICE },
-                    onStartWorkout = onSyncNow
+                    onStartWorkout = onStartWorkout,
+                    onStopWorkout = onStopWorkout,
+                    onSyncNow = onSyncNow
                 )
                 NavDestination.DEVICE -> DeviceScreen(
                     summary = summary,
                     onStartScan = onStartScan,
                     onConnectDevice = onConnectDevice,
                     onDisconnectDevice = onDisconnectDevice,
+                    onUnpairWatch = onUnpairWatch,
                     onSyncNow = onSyncNow,
                     onBackClick = { currentDestination = NavDestination.TODAY }
                 )

@@ -47,6 +47,10 @@ import com.cmfwatch.companion.storage.DeviceSettingsStore
 import com.cmfwatch.companion.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 // ==========================================
 // COLOR PALETTE (EXACT CMF EXPRESSIVE LIGHT THEME)
@@ -126,12 +130,15 @@ fun DeviceScreen(
     onStartScan: () -> Unit = {},
     onConnectDevice: (String) -> Unit = {},
     onDisconnectDevice: () -> Unit = {},
+    onUnpairWatch: () -> Unit = {},
     onSyncNow: () -> Unit = {},
     onBackClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    var showUnpairDialog by remember { mutableStateOf(false) }
 
     // Device Settings Store (Persists user inputs across navigation & restarts)
     val settingsStore = remember(context) { DeviceSettingsStore(context) }
@@ -494,7 +501,8 @@ fun DeviceScreen(
                             name = "CMF Digital Ring",
                             status = "Installed · Active",
                             isActive = true,
-                            faceType = WatchFaceType.DIGITAL_RING
+                            faceType = WatchFaceType.DIGITAL_RING,
+                            todaySteps = summary.todaySteps
                         )
                     }
                     item {
@@ -502,7 +510,8 @@ fun DeviceScreen(
                             name = "Studio Bauhaus",
                             status = "Stored on Watch",
                             isActive = false,
-                            faceType = WatchFaceType.CHRONO
+                            faceType = WatchFaceType.CHRONO,
+                            todaySteps = summary.todaySteps
                         )
                     }
                     item {
@@ -510,7 +519,8 @@ fun DeviceScreen(
                             name = "Vitals Trio",
                             status = "Cloud Preset",
                             isActive = false,
-                            faceType = WatchFaceType.TRIPLE_RING
+                            faceType = WatchFaceType.TRIPLE_RING,
+                            todaySteps = summary.todaySteps
                         )
                     }
                 }
@@ -920,7 +930,11 @@ fun DeviceScreen(
                                 .fillMaxWidth()
                                 .clip(CircleShape)
                                 .bouncyClickable {
-                                    if (isConnected) onDisconnectDevice() else onStartScan()
+                                    if (isConnected || summary.isPairedWithWatch) {
+                                        showUnpairDialog = true
+                                    } else {
+                                        onStartScan()
+                                    }
                                 }
                         ) {
                             Row(
@@ -929,7 +943,7 @@ fun DeviceScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = if (isConnected) "Unpair & Factory Reset" else "Pair Watch",
+                                    text = if (isConnected || summary.isPairedWithWatch) "Unpair & Factory Reset" else "Pair Watch",
                                     fontFamily = AppFontFamily,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
@@ -947,6 +961,45 @@ fun DeviceScreen(
                 }
             }
         }
+    }
+
+    if (showUnpairDialog) {
+        AlertDialog(
+            onDismissRequest = { showUnpairDialog = false },
+            title = {
+                Text(
+                    text = "Unpair Watch?",
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = TextOnSurface
+                )
+            },
+            text = {
+                Text(
+                    text = "This will remove the Bluetooth pairing from your phone, clear saved watch telemetry, and disconnect from your CMF Watch.",
+                    fontFamily = AppFontFamily,
+                    fontSize = 14.sp,
+                    color = TextVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showUnpairDialog = false
+                        onUnpairWatch()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = HeartRateRed)
+                ) {
+                    Text("Unpair", color = Color.White, fontFamily = AppFontFamily, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUnpairDialog = false }) {
+                    Text("Cancel", fontFamily = AppFontFamily, color = TextMutedGray)
+                }
+            }
+        )
     }
 }
 
@@ -1012,8 +1065,16 @@ private fun WatchFaceCard(
     name: String,
     status: String,
     isActive: Boolean,
-    faceType: WatchFaceType
+    faceType: WatchFaceType,
+    todaySteps: Int? = null
 ) {
+    val dateText = remember {
+        LocalDate.now().format(DateTimeFormatter.ofPattern("EEE d", Locale.getDefault())).uppercase(Locale.getDefault())
+    }
+    val timeText = remember {
+        LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
+    }
+    val stepsText = todaySteps?.let { String.format(Locale.getDefault(), "%,d", it) } ?: "--"
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = DeviceCardBg,
@@ -1105,21 +1166,21 @@ private fun WatchFaceCard(
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "MON 26",
+                            text = dateText,
                             fontFamily = AppFontFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = 9.sp,
                             color = CmfOrange
                         )
                         Text(
-                            text = "10:09",
+                            text = timeText,
                             fontFamily = HeadlineFontFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp,
                             color = Color.White
                         )
                         Text(
-                            text = "8,452",
+                            text = stepsText,
                             fontFamily = AppFontFamily,
                             fontSize = 9.sp,
                             color = Color.LightGray

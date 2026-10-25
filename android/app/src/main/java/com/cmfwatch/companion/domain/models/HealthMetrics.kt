@@ -9,6 +9,7 @@ enum class DeviceConnectionState {
     DEVICES_FOUND,
     CONNECTING,
     CONNECTED,
+    BONDING,
     DISCOVERING_SERVICES,
     SUBSCRIBING,
     AUTHENTICATING,
@@ -88,5 +89,10 @@ data class DashboardSummary(
     val workoutsToday: List<SavedWorkout> = emptyList(),
     val workoutsAll: List<SavedWorkout> = emptyList(),
     val activeStandHours: Int = 0,
-    val latestSleepSession: SleepSession? = null
+    val latestSleepSession: SleepSession? = null,
+    val isPairedWithWatch: Boolean = false,
+    val isWorkoutActive: Boolean = false,
+    val liveWorkoutBpm: Int? = null,
+    val liveWorkoutDurationSec: Int = 0,
+    val activeWorkoutType: String = "Outdoor Run"
 )

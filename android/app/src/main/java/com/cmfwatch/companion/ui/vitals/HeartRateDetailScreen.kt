@@ -154,7 +154,12 @@ fun HeartRateDetailScreen(
         }
     }
 
-    val latestBpm = allSamples.lastOrNull()?.bpm
+    val zoneId = ZoneId.systemDefault()
+    val today = LocalDate.now(zoneId)
+    val todaySamples = allSamples.filter { it.timestamp.atZone(zoneId).toLocalDate() == today }
+    val latestBpm = todaySamples.lastOrNull()?.bpm ?: allSamples.lastOrNull()?.let {
+        if (it.timestamp.isAfter(Instant.now().minus(java.time.Duration.ofHours(24)))) it.bpm else null
+    }
     val bpms = chartPoints.map { it.bpm }
     val avgBpm = if (bpms.isNotEmpty()) bpms.average().toInt() else null
     val highestBpm = bpms.maxOrNull()

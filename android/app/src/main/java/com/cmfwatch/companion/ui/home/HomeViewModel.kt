@@ -43,13 +43,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             workoutsToday = emptyList(),
             workoutsAll = emptyList(),
             activeStandHours = 0,
-            latestSleepSession = null
+            latestSleepSession = null,
+            isPairedWithWatch = bleManager.hasSavedPairing()
         )
     )
     val uiState: StateFlow<DashboardSummary> = _uiState.asStateFlow()
 
     init {
         // Load initial persistent snapshots & local telemetry history
+        telemetryStore.pruneOutdatedHeartRateSamples()
         val cached = snapshotStore.load()
         val allHR = telemetryStore.getHeartRateSamples()
         val todayHR = telemetryStore.getHeartRateSamplesToday()
@@ -60,12 +62,27 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         val latestSleep = telemetryStore.getLatestSleepSession()
         val stands = telemetryStore.computeStandHoursToday()
 
-        val initialBpm = todayHR.lastOrNull()?.bpm ?: cached.latestHeartRate
+        // Authoritative production validation: only display today's latest heart rate
+        val initialBpm = todayHR.lastOrNull()?.bpm ?: cached.latestHeartRate?.takeIf {
+            cached.lastSyncedAt != null &&
+            cached.lastSyncedAt.atZone(java.time.ZoneId.systemDefault()).toLocalDate() == java.time.LocalDate.now()
+        }
         val sleepMins = latestSleep?.totalSleepMinutes ?: cached.lastSleepMinutes
+
+        // Compute today's step totals from the authoritative telemetry store
+        val initialSteps = todaySteps.sumOf { it.steps }.let { if (it > 0) it else cached.todaySteps }
+        val initialDist = todaySteps.sumOf { it.distanceMeters.toDouble() }.toFloat().let { d ->
+            val km = d / 1000f
+            if (km > 0f) km else cached.todayDistanceKm
+        }
+        val initialKcal = todaySteps.sumOf { it.caloriesKcal.toDouble() }.toInt().let { if (it > 0) it else cached.todayCaloriesKcal }
 
         _uiState.value = cached.copy(
             latestHeartRate = initialBpm,
             lastSleepMinutes = sleepMins,
+            todaySteps = initialSteps,
+            todayDistanceKm = initialDist,
+            todayCaloriesKcal = initialKcal,
             connectionState = bleManager.connectionState.value,
             hrSamplesToday = todayHR,
             hrSamplesAll = allHR,
@@ -81,6 +98,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             bleManager.connectionState.collect { state ->
                 _uiState.value = _uiState.value.copy(connectionState = state)
+                if (state == DeviceConnectionState.CONNECTED_PAIRED) {
+                    bleManager.enableRealtimeStream()
+                }
+            }
+        }
+
+        // Observe Pairing State
+        viewModelScope.launch {
+            bleManager.isPairedWithWatch.collect { isPaired ->
+                _uiState.value = _uiState.value.copy(isPairedWithWatch = isPaired)
             }
         }
 
@@ -116,7 +143,54 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     lastSyncedAt = Instant.now()
                 )
                 _uiState.value = updated
-                snapshotStore.save(updated)
+                snapshotStore.save(updated, sample.timestamp)
+            }
+        }
+
+        // Observe Resting Heart Rate Telemetry
+        viewModelScope.launch {
+            bleManager.restingHeartRate.collect { resting ->
+                if (resting != null) {
+                    val updated = _uiState.value.copy(restingHeartRate = resting)
+                    _uiState.value = updated
+                    snapshotStore.save(updated)
+                }
+            }
+        }
+
+        // Observe Live Workout Active Status & Live Workout Heart Rate
+        var workoutTimerJob: kotlinx.coroutines.Job? = null
+        viewModelScope.launch {
+            bleManager.isWorkoutActive.collect { active ->
+                _uiState.value = _uiState.value.copy(isWorkoutActive = active)
+                if (active) {
+                    workoutTimerJob?.cancel()
+                    workoutTimerJob = viewModelScope.launch {
+                        while (_uiState.value.isWorkoutActive) {
+                            delay(1000)
+                            _uiState.value = _uiState.value.copy(
+                                liveWorkoutDurationSec = _uiState.value.liveWorkoutDurationSec + 1
+                            )
+                        }
+                    }
+                } else {
+                    workoutTimerJob?.cancel()
+                    _uiState.value = _uiState.value.copy(
+                        liveWorkoutDurationSec = 0,
+                        liveWorkoutBpm = null
+                    )
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            bleManager.liveWorkoutHeartRate.collect { bpm ->
+                if (bpm != null) {
+                    _uiState.value = _uiState.value.copy(
+                        liveWorkoutBpm = bpm,
+                        latestHeartRate = bpm
+                    )
+                }
             }
         }
 
@@ -128,14 +202,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 val todayStepList = telemetryStore.getStepIntervalsToday()
                 val standsCount = telemetryStore.computeStandHoursToday()
 
-                val newSteps = (_uiState.value.todaySteps ?: 0) + step.steps
-                val newDist = (_uiState.value.todayDistanceKm ?: 0.0f) + (step.distanceMeters / 1000.0f)
-                val newKcal = (_uiState.value.todayCaloriesKcal ?: 0) + step.caloriesKcal.toInt()
+                // Compute totals from the authoritative store to prevent double-counting.
+                // Each step interval has absolute values; we sum ALL today's intervals.
+                val totalSteps = todayStepList.sumOf { it.steps }
+                val totalDist = todayStepList.sumOf { it.distanceMeters.toDouble() }.toFloat() / 1000.0f
+                val totalKcal = todayStepList.sumOf { it.caloriesKcal.toDouble() }.toInt()
 
                 val updated = _uiState.value.copy(
-                    todaySteps = newSteps,
-                    todayDistanceKm = newDist,
-                    todayCaloriesKcal = newKcal,
+                    todaySteps = totalSteps,
+                    todayDistanceKm = totalDist,
+                    todayCaloriesKcal = totalKcal,
                     stepIntervalsToday = todayStepList,
                     stepIntervalsAll = allStepList,
                     activeStandHours = standsCount,
@@ -202,18 +278,21 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // Auto-reconnect to preferred saved watch on app launch if not already connected
-        snapshotStore.preferredDeviceAddress()?.let { mac ->
-            try {
-                CmfBleService.start(application.applicationContext)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            val currentState = bleManager.connectionState.value
-            if (currentState != DeviceConnectionState.CONNECTED_PAIRED &&
-                currentState != DeviceConnectionState.CONNECTED &&
-                currentState != DeviceConnectionState.SUBSCRIBING
-            ) {
-                connectToWatch(mac)
+        if (bleManager.hasSavedPairing()) {
+            val mac = bleManager.getSavedDeviceMac() ?: snapshotStore.preferredDeviceAddress()
+            if (mac != null) {
+                try {
+                    CmfBleService.start(application.applicationContext)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                val currentState = bleManager.connectionState.value
+                if (currentState != DeviceConnectionState.CONNECTED_PAIRED &&
+                    currentState != DeviceConnectionState.CONNECTED &&
+                    currentState != DeviceConnectionState.SUBSCRIBING
+                ) {
+                    connectToWatch(mac)
+                }
             }
         }
 
@@ -227,6 +306,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 delay(120_000) // 2 minutes smart sync
                 if (_uiState.value.connectionState == DeviceConnectionState.CONNECTED_PAIRED) {
                     bleManager.fetchBattery()
+                    bleManager.enableRealtimeStream()
                     bleManager.triggerSync()
                 }
             }
@@ -258,6 +338,49 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             e.printStackTrace()
         }
         bleManager.disconnect()
+    }
+
+    fun unpairWatch() {
+        try {
+            CmfBleService.stop(getApplication())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        bleManager.unpair()
+        telemetryStore.clearAll()
+        // Reset dashboard summary to clean empty state
+        _uiState.value = DashboardSummary(
+            latestHeartRate = null,
+            restingHeartRate = null,
+            latestSpO2 = null,
+            todaySteps = null,
+            todayDistanceKm = null,
+            todayCaloriesKcal = null,
+            lastSleepMinutes = null,
+            latestStressScore = null,
+            deviceBatteryLevel = null,
+            connectionState = DeviceConnectionState.IDLE,
+            lastSyncedAt = null,
+            isPairedWithWatch = false
+        )
+    }
+
+    fun startWorkout(type: String = "Outdoor Run") {
+        _uiState.value = _uiState.value.copy(
+            activeWorkoutType = type,
+            isWorkoutActive = true,
+            liveWorkoutDurationSec = 0
+        )
+        bleManager.startWorkoutMode()
+    }
+
+    fun stopWorkout() {
+        bleManager.stopWorkoutMode()
+        _uiState.value = _uiState.value.copy(
+            isWorkoutActive = false,
+            liveWorkoutDurationSec = 0,
+            liveWorkoutBpm = null
+        )
     }
 
     fun triggerSync() {

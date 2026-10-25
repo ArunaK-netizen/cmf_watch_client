@@ -172,7 +172,8 @@ fun DeviceConnectionState.isCmfConnected(): Boolean =
         this == DeviceConnectionState.SYNCING ||
         this == DeviceConnectionState.SUBSCRIBING ||
         this == DeviceConnectionState.AUTHENTICATING ||
-        this == DeviceConnectionState.DISCOVERING_SERVICES
+        this == DeviceConnectionState.DISCOVERING_SERVICES ||
+        this == DeviceConnectionState.BONDING
 
 @Composable
 fun CmfPulseDot(color: Color, size: Dp = 6.dp) {

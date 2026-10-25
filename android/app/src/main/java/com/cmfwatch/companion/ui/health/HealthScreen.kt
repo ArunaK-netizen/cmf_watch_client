@@ -639,36 +639,47 @@ private fun SleepArchitectureCard(
         val remSec = if (hasEpochs) session!!.epochs.filter { it.stage == com.cmfwatch.companion.domain.models.SleepStage.REM }.sumOf { it.durationMinutes * 60 } else 0
         val awakeSec = if (hasEpochs) session!!.epochs.filter { it.stage == com.cmfwatch.companion.domain.models.SleepStage.AWAKE }.sumOf { it.durationMinutes * 60 } else 0
 
-        val deep = if (hasEpochs) (deepSec / totalSec).coerceIn(0.05f, 1f) else 0.08f
-        val core = if (hasEpochs) (coreSec / totalSec).coerceIn(0.05f, 1f) else 0.08f
-        val rem = if (hasEpochs) (remSec / totalSec).coerceIn(0.05f, 1f) else 0.08f
-        val awake = if (hasEpochs) (awakeSec / totalSec).coerceIn(0.05f, 1f) else 0.08f
+        val deep = if (hasEpochs) (deepSec / totalSec).coerceIn(0.05f, 1f) else 0.25f
+        val core = if (hasEpochs) (coreSec / totalSec).coerceIn(0.05f, 1f) else 0.25f
+        val rem = if (hasEpochs) (remSec / totalSec).coerceIn(0.05f, 1f) else 0.25f
+        val awake = if (hasEpochs) (awakeSec / totalSec).coerceIn(0.05f, 1f) else 0.25f
 
-        val deepText = if (hasEpochs) formatMins(deepSec / 60) else (sleepMinutes?.let { formatMins((it * 0.21f).roundToInt()) } ?: "--")
-        val coreText = if (hasEpochs) formatMins(coreSec / 60) else (sleepMinutes?.let { formatMins((it * 0.54f).roundToInt()) } ?: "--")
-        val remText = if (hasEpochs) formatMins(remSec / 60) else (sleepMinutes?.let { formatMins((it * 0.18f).roundToInt()) } ?: "--")
-        val awakeText = if (hasEpochs) formatMins(awakeSec / 60) else (sleepMinutes?.let { formatMins((it * 0.07f).roundToInt()) } ?: "--")
+        val deepText = if (hasEpochs) formatMins(deepSec / 60) else "--"
+        val coreText = if (hasEpochs) formatMins(coreSec / 60) else "--"
+        val remText = if (hasEpochs) formatMins(remSec / 60) else "--"
+        val awakeText = if (hasEpochs) formatMins(awakeSec / 60) else "--"
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(16.dp)
-                    .clip(PillShape)
-                    .background(CmfSurfaceHigh)
-                    .padding(2.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                StageSeg(deep, CmfSecondaryContainer)
-                StageSeg(core, CmfSecondary)
-                StageSeg(rem, CmfSecondaryFixedDim)
-                StageSeg(awake, CmfOutlineVariant)
+            if (hasEpochs) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(16.dp)
+                        .clip(PillShape)
+                        .background(CmfSurfaceHigh)
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    StageSeg(deep, CmfSecondaryContainer)
+                    StageSeg(core, CmfSecondary)
+                    StageSeg(rem, CmfSecondaryFixedDim)
+                    StageSeg(awake, CmfOutlineVariant)
+                }
             }
             Row(modifier = Modifier.fillMaxWidth()) {
                 StageLegend("Deep", CmfSecondaryContainer, deepText)
                 StageLegend("Core", CmfSecondary, coreText)
                 StageLegend("REM", CmfSecondaryFixedDim, remText)
                 StageLegend("Awake", CmfOutlineVariant, awakeText)
+            }
+            if (!hasEpochs && sleepMinutes != null && sleepMinutes > 0) {
+                Text(
+                    text = "Detailed stages (Deep/Core/REM) record when wearing watch through full overnight sleep.",
+                    fontFamily = InterFontFamily,
+                    fontSize = 11.sp,
+                    color = CmfOnSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
             }
         }
 
@@ -801,52 +812,44 @@ private fun Spo2Card(spo2: Int?, modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
-        Spacer(modifier = Modifier.height(12.dp))
-        val heights = if (spo2 != null) {
-            listOf(0.85f, 0.90f, 0.88f, 0.95f, 0.92f, 0.98f, 1f).map { it * (spo2 / 100f).coerceIn(0.7f, 1f) }
-        } else {
-            List(7) { 0.18f }
-        }
-        Row(
+        Spacer(modifier = Modifier.height(16.dp))
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(24.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.Bottom
+                .height(8.dp)
+                .clip(PillShape)
+                .background(CmfSurfaceHigh)
         ) {
-            heights.forEachIndexed { i, h ->
+            if (spo2 != null) {
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(h.coerceIn(0.12f, 1f))
+                        .fillMaxWidth((spo2 / 100f).coerceIn(0f, 1f))
+                        .fillMaxHeight()
                         .clip(PillShape)
-                        .background(
-                            if (spo2 == null) CmfPrimaryContainer.copy(alpha = 0.18f)
-                            else CmfPrimaryContainer.copy(alpha = 0.30f + i * 0.10f)
-                        )
+                        .background(CmfPrimaryContainer)
                 )
             }
         }
         Row(
-            modifier = Modifier.padding(top = 8.dp),
+            modifier = Modifier.padding(top = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = Icons.Outlined.CheckCircle,
                 contentDescription = null,
-                tint = CmfTertiary,
-                modifier = Modifier.size(12.dp)
+                tint = if (spo2 != null && spo2 >= 95) CmfTertiary else CmfOnSurfaceVariant,
+                modifier = Modifier.size(14.dp)
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
                 text = when {
-                    spo2 == null -> "Waiting for SpO2"
-                    spo2 >= 95 -> "No irregular drops"
-                    else -> "Below baseline"
+                    spo2 == null -> "Waiting for SpO2 sample"
+                    spo2 >= 95 -> "Normal (95% - 100%)"
+                    else -> "Below baseline (<95%)"
                 },
                 fontFamily = InterFontFamily,
                 fontWeight = FontWeight.Medium,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 color = if (spo2 != null && spo2 >= 95) CmfTertiary else CmfOnSurfaceVariant
             )
         }

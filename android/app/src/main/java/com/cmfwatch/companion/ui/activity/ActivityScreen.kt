@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,9 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Pool
 import androidx.compose.material.icons.outlined.Sensors
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Timelapse
 import androidx.compose.material.icons.outlined.Tune
@@ -41,6 +45,8 @@ import androidx.compose.material.icons.outlined.Watch
 import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -70,6 +76,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cmfwatch.companion.domain.models.CmfSport
+import com.cmfwatch.companion.domain.models.SportCategory
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.storage.SavedWorkout
 import com.cmfwatch.companion.storage.UserGoalStore
@@ -337,80 +344,19 @@ fun ActivityScreen(
     }
 
     if (showWorkoutInfoDialog) {
-        AlertDialog(
-            onDismissRequest = { showWorkoutInfoDialog = false },
-            title = {
-                Text(
-                    text = "Start Workout on CMF Watch",
-                    fontFamily = HeadlineFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = CmfOnSurface
-                )
+        AllSportsSelectorDialog(
+            selectedSport = selectedSport,
+            onSelectSport = { selectedSport = it },
+            onStartWorkout = { sport ->
+                selectedSport = sport
+                showWorkoutInfoDialog = false
+                onStartWorkout(sport.displayName)
             },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Select Sport Activity:",
-                        fontFamily = InterFontFamily,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                        color = CmfOnSurface
-                    )
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CmfSport.popularSports.forEach { sport ->
-                            val isSelected = (sport == selectedSport)
-                            Box(
-                                modifier = Modifier
-                                    .clip(PillShape)
-                                    .background(if (isSelected) CmfPrimaryContainer else CmfSurfaceContainer)
-                                    .clickable { selectedSport = sport }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
-                            ) {
-                                Text(
-                                    text = sport.displayName,
-                                    fontFamily = InterFontFamily,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 12.sp,
-                                    color = if (isSelected) CmfOnPrimary else CmfOnSurface
-                                )
-                            }
-                        }
-                    }
-
-                    Text(
-                        text = "Starting the workout triggers workout mode directly on your CMF Watch and streams live heart rate, HR zones, and calories.\n\nTip: You can also start Cricket, Cycling, or any sport directly from your watch's Sports menu!",
-                        fontFamily = InterFontFamily,
-                        fontSize = 12.sp,
-                        color = CmfOnSurfaceVariant
-                    )
-                }
+            onSyncNow = {
+                showWorkoutInfoDialog = false
+                onSyncNow()
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showWorkoutInfoDialog = false
-                        onStartWorkout(selectedSport.displayName)
-                    }
-                ) { Text("Start ${selectedSport.displayName} on Watch") }
-            },
-            dismissButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(
-                        onClick = {
-                            showWorkoutInfoDialog = false
-                            onSyncNow()
-                        }
-                    ) { Text("Sync Watch Now") }
-                    TextButton(onClick = { showWorkoutInfoDialog = false }) { Text("Cancel") }
-                }
-            }
+            onDismiss = { showWorkoutInfoDialog = false }
         )
     }
 
@@ -1728,4 +1674,226 @@ private fun LiveWorkoutCard(
             }
         }
     }
+}
+
+@Composable
+fun AllSportsSelectorDialog(
+    selectedSport: CmfSport,
+    onSelectSport: (CmfSport) -> Unit,
+    onStartWorkout: (CmfSport) -> Unit,
+    onSyncNow: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf<SportCategory?>(null) }
+    var currentChoice by remember { mutableStateOf(selectedSport) }
+
+    val allSports = remember { CmfSport.entries.toList() }
+    val filteredSports = remember(searchQuery, selectedCategory) {
+        allSports.filter { sport ->
+            val matchesCategory = (selectedCategory == null || sport.category == selectedCategory)
+            val matchesSearch = searchQuery.isBlank() ||
+                sport.displayName.contains(searchQuery.trim(), ignoreCase = true) ||
+                sport.category.displayName.contains(searchQuery.trim(), ignoreCase = true)
+            matchesCategory && matchesSearch
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Sports & Activities",
+                        fontFamily = HeadlineFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = CmfOnSurface
+                    )
+                    Text(
+                        text = "120 Supported CMF Watch Modes",
+                        fontFamily = InterFontFamily,
+                        fontSize = 11.sp,
+                        color = CmfOnSurfaceVariant
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(420.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Search Input
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search sports (e.g. Cricket, Run, Yoga)...", fontSize = 12.sp) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    singleLine = true,
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Search,
+                            contentDescription = null,
+                            tint = CmfOnSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Close,
+                                    contentDescription = "Clear",
+                                    tint = CmfOnSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                )
+
+                // Category Filter Chips Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val isAll = (selectedCategory == null)
+                    Box(
+                        modifier = Modifier
+                            .clip(PillShape)
+                            .background(if (isAll) CmfPrimaryContainer else CmfSurfaceContainer)
+                            .clickable { selectedCategory = null }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "All (${allSports.size})",
+                            fontFamily = InterFontFamily,
+                            fontWeight = if (isAll) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 11.sp,
+                            color = if (isAll) CmfOnPrimary else CmfOnSurface
+                        )
+                    }
+
+                    SportCategory.entries.forEach { cat ->
+                        val isCatSelected = (selectedCategory == cat)
+                        Box(
+                            modifier = Modifier
+                                .clip(PillShape)
+                                .background(if (isCatSelected) CmfPrimaryContainer else CmfSurfaceContainer)
+                                .clickable { selectedCategory = cat }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = cat.displayName,
+                                fontFamily = InterFontFamily,
+                                fontWeight = if (isCatSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 11.sp,
+                                color = if (isCatSelected) CmfOnPrimary else CmfOnSurface
+                            )
+                        }
+                    }
+                }
+
+                // Sports List
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(filteredSports.size) { idx ->
+                        val sport = filteredSports[idx]
+                        val isSelected = (sport == currentChoice)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSelected) CmfPrimaryContainer.copy(alpha = 0.15f) else CmfSurfaceLowest)
+                                .border(
+                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                    color = if (isSelected) CmfPrimary else CmfSurfaceContainer,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .clickable {
+                                    currentChoice = sport
+                                    onSelectSport(sport)
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = sport.displayName,
+                                    fontFamily = HeadlineFontFamily,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    color = if (isSelected) CmfPrimary else CmfOnSurface
+                                )
+                                Text(
+                                    text = sport.category.displayName,
+                                    fontFamily = InterFontFamily,
+                                    fontSize = 11.sp,
+                                    color = CmfOnSurfaceVariant
+                                )
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (sport.isGpsEnabled) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color(0xFF00E676).copy(alpha = 0.15f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "GPS",
+                                            fontFamily = InterFontFamily,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.sp,
+                                            color = Color(0xFF008733)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.CheckCircle,
+                                        contentDescription = "Selected",
+                                        tint = CmfPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onStartWorkout(currentChoice) },
+                colors = ButtonDefaults.buttonColors(containerColor = CmfPrimary)
+            ) {
+                Text("Start ${currentChoice.displayName} on Watch", color = CmfOnPrimary, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onSyncNow) { Text("Sync Watch Now") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        }
+    )
 }

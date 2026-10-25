@@ -132,6 +132,7 @@ fun DeviceScreen(
     onDisconnectDevice: () -> Unit = {},
     onUnpairWatch: () -> Unit = {},
     onSyncNow: () -> Unit = {},
+    onFlashWatchface: (ByteArray, (Float) -> Unit, (Boolean) -> Unit) -> Unit = { _, _, _ -> },
     onBackClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -139,6 +140,7 @@ fun DeviceScreen(
     val scope = rememberCoroutineScope()
 
     var showUnpairDialog by remember { mutableStateOf(false) }
+    var showWatchFaceStudio by remember { mutableStateOf(false) }
 
     // Device Settings Store (Persists user inputs across navigation & restarts)
     val settingsStore = remember(context) { DeviceSettingsStore(context) }
@@ -473,7 +475,7 @@ fun DeviceScreen(
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable { }
+                        modifier = Modifier.clickable { showWatchFaceStudio = true }
                     ) {
                         Text(
                             text = "Browse Faces",
@@ -532,7 +534,7 @@ fun DeviceScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(CircleShape)
-                        .bouncyClickable { }
+                        .bouncyClickable { showWatchFaceStudio = true }
                 ) {
                     Row(
                         modifier = Modifier.padding(vertical = 14.dp),
@@ -961,6 +963,13 @@ fun DeviceScreen(
                 }
             }
         }
+    }
+
+    if (showWatchFaceStudio) {
+        WatchFaceManagerDialog(
+            onDismiss = { showWatchFaceStudio = false },
+            onFlashWatchface = onFlashWatchface
+        )
     }
 
     if (showUnpairDialog) {

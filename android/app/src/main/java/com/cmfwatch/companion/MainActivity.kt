@@ -78,7 +78,10 @@ class MainActivity : ComponentActivity() {
                         onUnpairWatch = { homeViewModel.unpairWatch() },
                         onSyncNow = { homeViewModel.triggerSync() },
                         onStartWorkout = { type -> homeViewModel.startWorkout(type) },
-                        onStopWorkout = { homeViewModel.stopWorkout() }
+                        onStopWorkout = { homeViewModel.stopWorkout() },
+                        onFlashWatchface = { bytes, onProg, onComp ->
+                            homeViewModel.flashWatchface(bytes, onProg, onComp)
+                        }
                     )
                 }
             }

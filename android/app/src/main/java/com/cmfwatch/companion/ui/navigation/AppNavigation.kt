@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.ui.activity.ActivityScreen
+import com.cmfwatch.companion.ui.activity.ActiveWorkoutScreen
 import com.cmfwatch.companion.ui.device.DeviceScreen
 import com.cmfwatch.companion.ui.health.HealthScreen
 import com.cmfwatch.companion.ui.home.HomeScreen
@@ -66,10 +67,18 @@ fun AppNavigationShell(
     onSyncNow: () -> Unit = {},
     onStartWorkout: (String) -> Unit = {},
     onStopWorkout: () -> Unit = {},
+    onFlashWatchface: (ByteArray, (Float) -> Unit, (Boolean) -> Unit) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var currentDestination by remember { mutableStateOf(NavDestination.TODAY) }
     var isViewingHeartRateDetail by remember { mutableStateOf(false) }
+    var isWorkoutMinimized by remember { mutableStateOf(false) }
+
+    androidx.compose.runtime.LaunchedEffect(summary.isWorkoutActive) {
+        if (!summary.isWorkoutActive) {
+            isWorkoutMinimized = false
+        }
+    }
 
     // Gate: If not paired with a watch, show the pairing screen
     if (!summary.isPairedWithWatch) {
@@ -88,7 +97,17 @@ fun AppNavigationShell(
             .fillMaxSize()
             .background(CmfBackground)
     ) {
-        if (isViewingHeartRateDetail) {
+        if (summary.isWorkoutActive && !isWorkoutMinimized) {
+            ActiveWorkoutScreen(
+                workoutType = summary.activeWorkoutType,
+                bpm = summary.liveWorkoutBpm ?: summary.latestHeartRate,
+                durationSec = summary.liveWorkoutDurationSec,
+                todayKcal = summary.todayCaloriesKcal ?: 0,
+                todayDistKm = summary.todayDistanceKm ?: 0f,
+                onStopWorkout = onStopWorkout,
+                onMinimize = { isWorkoutMinimized = true }
+            )
+        } else if (isViewingHeartRateDetail) {
             HeartRateDetailScreen(
                 allSamples = summary.hrSamplesAll,
                 onBackClick = { isViewingHeartRateDetail = false }
@@ -122,6 +141,7 @@ fun AppNavigationShell(
                     onDisconnectDevice = onDisconnectDevice,
                     onUnpairWatch = onUnpairWatch,
                     onSyncNow = onSyncNow,
+                    onFlashWatchface = onFlashWatchface,
                     onBackClick = { currentDestination = NavDestination.TODAY }
                 )
             }

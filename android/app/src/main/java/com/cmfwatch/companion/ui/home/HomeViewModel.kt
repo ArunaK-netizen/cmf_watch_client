@@ -403,4 +403,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun triggerSync() {
         bleManager.triggerSync()
     }
+
+    fun flashWatchface(binBytes: ByteArray, onProgress: (Float) -> Unit, onComplete: (Boolean) -> Unit) {
+        bleManager.flashWatchface(binBytes, onProgress, onComplete)
+    }
+
+    fun setStandHours(stands: Int) {
+        telemetryStore.setStandHoursToday(stands)
+        val updated = _uiState.value.copy(activeStandHours = stands)
+        _uiState.value = updated
+        snapshotStore.save(updated)
+    }
 }

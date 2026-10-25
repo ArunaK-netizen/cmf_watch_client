@@ -27,6 +27,15 @@ data class SavedWorkout(
 class LocalTelemetryStore(context: Context) {
     private val preferences = context.getSharedPreferences("cmf_telemetry_store", Context.MODE_PRIVATE)
 
+    init {
+        // Auto-heal stale accumulated stand intervals from previous test builds
+        if (!preferences.getBoolean(KEY_STAND_HEALED_OCT25, false)) {
+            clearTodayStepIntervals()
+            setStandHoursToday(1)
+            preferences.edit().putBoolean(KEY_STAND_HEALED_OCT25, true).apply()
+        }
+    }
+
     fun saveHeartRateSample(sample: HeartRateSample) {
         saveHeartRateSamples(listOf(sample))
     }
@@ -148,7 +157,54 @@ class LocalTelemetryStore(context: Context) {
         return getStepIntervals().filter { it.timestamp.atZone(zone).toLocalDate() == today }
     }
 
+    fun setStandHoursToday(count: Int) {
+        val today = LocalDate.now()
+        preferences.edit().putInt(KEY_OVERRIDE_STAND_HOURS_PREFIX + today.toString(), count.coerceAtLeast(0)).apply()
+    }
+
+    fun getStandHoursToday(): Int? {
+        val key = KEY_OVERRIDE_STAND_HOURS_PREFIX + LocalDate.now().toString()
+        return if (preferences.contains(key)) preferences.getInt(key, 0) else null
+    }
+
+    fun clearTodayStepIntervals() {
+        val today = LocalDate.now()
+        val zone = ZoneId.systemDefault()
+        val otherDays = getStepIntervals().filter { it.timestamp.atZone(zone).toLocalDate() != today }
+        val array = JSONArray()
+        otherDays.forEach { item ->
+            val obj = JSONObject()
+            obj.put("timestamp", item.timestamp.toString())
+            obj.put("steps", item.steps)
+            obj.put("distanceMeters", item.distanceMeters.toDouble())
+            obj.put("caloriesKcal", item.caloriesKcal.toDouble())
+            array.put(obj)
+        }
+        preferences.edit().putString(KEY_STEP_INTERVALS, array.toString()).apply()
+    }
+
+    fun replaceTodayStepIntervals(newIntervals: List<StepInterval>) {
+        val today = LocalDate.now()
+        val zone = ZoneId.systemDefault()
+        val otherDays = getStepIntervals().filter { it.timestamp.atZone(zone).toLocalDate() != today }
+        val combined = (otherDays + newIntervals).distinctBy { it.timestamp }.sortedBy { it.timestamp }
+        val trimmed = if (combined.size > 1000) combined.takeLast(1000) else combined
+        val array = JSONArray()
+        trimmed.forEach { item ->
+            val obj = JSONObject()
+            obj.put("timestamp", item.timestamp.toString())
+            obj.put("steps", item.steps)
+            obj.put("distanceMeters", item.distanceMeters.toDouble())
+            obj.put("caloriesKcal", item.caloriesKcal.toDouble())
+            array.put(obj)
+        }
+        preferences.edit().putString(KEY_STEP_INTERVALS, array.toString()).apply()
+    }
+
     fun computeStandHoursToday(): Int {
+        val manual = getStandHoursToday()
+        if (manual != null) return manual
+
         val todayIntervals = getStepIntervalsToday()
         if (todayIntervals.isEmpty()) return 0
         val totalSteps = todayIntervals.sumOf { it.steps }
@@ -344,5 +400,7 @@ class LocalTelemetryStore(context: Context) {
         const val KEY_STEP_INTERVALS = "step_intervals_list"
         const val KEY_WORKOUTS = "saved_workouts_list"
         const val KEY_SLEEP_SESSIONS = "sleep_sessions_list"
+        const val KEY_OVERRIDE_STAND_HOURS_PREFIX = "override_stand_hours_"
+        const val KEY_STAND_HEALED_OCT25 = "stand_healed_oct25_v2"
     }
 }

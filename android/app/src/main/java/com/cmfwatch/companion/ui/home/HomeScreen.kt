@@ -30,8 +30,15 @@ import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material.icons.outlined.SelfImprovement
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -92,6 +99,8 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val goals = remember(context) { UserGoalStore(context).getGoals() }
+    val telemetryStore = remember(context) { com.cmfwatch.companion.storage.LocalTelemetryStore(context) }
+    var showStandCalibrateDialog by remember { mutableStateOf(false) }
 
     val moveVal = summary.todayCaloriesKcal ?: 0
     val moveGoal = goals.caloriesGoal
@@ -179,7 +188,8 @@ fun HomeScreen(
                     moveProgress = moveProgress.coerceAtMost(1f),
                     exerciseProgress = exerciseProgress.coerceAtMost(1f),
                     standProgress = standProgress.coerceAtMost(1f),
-                    onClick = onActivityClick
+                    onClick = onActivityClick,
+                    onStandClick = { showStandCalibrateDialog = true }
                 )
             }
 
@@ -216,6 +226,77 @@ fun HomeScreen(
             }
 
             item { Spacer(modifier = Modifier.height(8.dp)) }
+        }
+
+        if (showStandCalibrateDialog) {
+            var tempStand by remember { mutableStateOf(standVal) }
+            AlertDialog(
+                onDismissRequest = { showStandCalibrateDialog = false },
+                title = {
+                    Text(
+                        text = "Calibrate Stand Hours",
+                        fontFamily = HeadlineFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = CmfOnSurface
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text(
+                            text = "Match the Stand Hours with what your CMF Watch currently displays on its screen today.",
+                            fontFamily = InterFontFamily,
+                            fontSize = 12.sp,
+                            color = CmfOnSurfaceVariant
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            IconButton(
+                                onClick = { if (tempStand > 0) tempStand-- },
+                                modifier = Modifier.clip(CircleShape).background(CmfSurfaceContainer)
+                            ) {
+                                Text("-", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = CmfOnSurface)
+                            }
+                            Spacer(modifier = Modifier.width(20.dp))
+                            Text(
+                                text = "$tempStand hrs",
+                                fontFamily = HeadlineFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 28.sp,
+                                color = CmfOnSurface
+                            )
+                            Spacer(modifier = Modifier.width(20.dp))
+                            IconButton(
+                                onClick = { if (tempStand < 24) tempStand++ },
+                                modifier = Modifier.clip(CircleShape).background(CmfSurfaceContainer)
+                            ) {
+                                Text("+", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = CmfOnSurface)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            telemetryStore.setStandHoursToday(tempStand)
+                            showStandCalibrateDialog = false
+                        }
+                    ) {
+                        Text("Save & Match Watch")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showStandCalibrateDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }
@@ -281,7 +362,8 @@ private fun ActivityRingsCard(
     moveProgress: Float,
     exerciseProgress: Float,
     standProgress: Float,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onStandClick: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -396,7 +478,8 @@ private fun ActivityRingsCard(
                 label = "STAND",
                 value = "$standVal",
                 subtitle = "/ $standGoal hrs",
-                dot = CmfSecondaryContainer
+                dot = CmfSecondaryContainer,
+                onClick = onStandClick
             )
         }
     }
@@ -456,12 +539,14 @@ private fun RingMetricChip(
     value: String,
     subtitle: String,
     dot: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
 ) {
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .background(CmfSurfaceLow)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(vertical = 10.dp, horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

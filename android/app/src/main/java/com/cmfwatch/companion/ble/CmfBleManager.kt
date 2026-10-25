@@ -997,6 +997,57 @@ class CmfBleManager(
         }
     }
 
+    fun flashWatchface(
+        binBytes: ByteArray,
+        onProgress: (Float) -> Unit,
+        onComplete: (Boolean) -> Unit
+    ) {
+        managerScope.launch {
+            try {
+                Log.i(TAG, "Starting Watch Face Flash: ${binBytes.size} bytes...")
+                onProgress(0.05f)
+
+                // 1. DATA_TRANSFER_WATCHFACE_INIT_1 (0xFFFF 0x8052)
+                sendFrame(0xFFFF, 0x8052, byteArrayOf(0xA5.toByte()), useEncryption = true)
+                delay(300)
+                onProgress(0.15f)
+
+                // 2. DATA_TRANSFER_WATCHFACE_INIT_2 (0xFFFF 0x9063)
+                val crc = java.util.zip.CRC32().apply { update(binBytes) }.value
+                val init2Payload = ByteBuffer.allocate(12).order(ByteOrder.LITTLE_ENDIAN)
+                init2Payload.putInt(binBytes.size)
+                init2Payload.putInt(crc.toInt())
+                init2Payload.putInt(-1) // 0xFFFFFFFF = auto-append slot
+                sendFrame(0xFFFF, 0x9063, init2Payload.array(), useEncryption = true)
+                delay(400)
+                onProgress(0.25f)
+
+                // 3. Chunk transmission
+                val chunkSize = 256
+                val totalChunks = (binBytes.size + chunkSize - 1) / chunkSize
+                for (chunkIdx in 0 until totalChunks) {
+                    val start = chunkIdx * chunkSize
+                    val end = minOf(binBytes.size, start + chunkSize)
+                    val chunk = binBytes.copyOfRange(start, end)
+                    sendFrame(0xFFFF, 0x9064, chunk, useEncryption = false)
+                    delay(30)
+                    val progress = 0.25f + 0.65f * ((chunkIdx + 1).toFloat() / totalChunks)
+                    onProgress(progress)
+                }
+
+                // 4. DATA_TRANSFER_WATCHFACE_FINISH (0xFFFF 0x9065)
+                sendFrame(0xFFFF, 0x9065, byteArrayOf(0x01), useEncryption = true)
+                delay(800)
+                onProgress(1.0f)
+                onComplete(true)
+                Log.i(TAG, "Watch Face Flash Completed Successfully!")
+            } catch (e: Exception) {
+                Log.e(TAG, "Watch Face Flash Error: ${e.message}")
+                onComplete(false)
+            }
+        }
+    }
+
     private fun sendFrame(cmd1: Int, cmd2: Int, payload: ByteArray, useEncryption: Boolean) {
         managerScope.launch {
             gattWriteMutex.withLock {

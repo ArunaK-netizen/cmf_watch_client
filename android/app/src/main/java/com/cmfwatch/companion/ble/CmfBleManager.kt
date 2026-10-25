@@ -12,6 +12,7 @@ import android.content.SharedPreferences
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.cmfwatch.companion.domain.models.CmfSport
 import com.cmfwatch.companion.domain.models.DeviceConnectionState
 import com.cmfwatch.companion.domain.models.DiscoveredDevice
 import com.cmfwatch.companion.domain.models.HeartRateSample
@@ -90,6 +91,9 @@ class CmfBleManager(
 
     private val _isWorkoutActive = MutableStateFlow(false)
     val isWorkoutActive: StateFlow<Boolean> = _isWorkoutActive.asStateFlow()
+
+    private val _activeWorkoutType = MutableStateFlow("Outdoor Run")
+    val activeWorkoutType: StateFlow<String> = _activeWorkoutType.asStateFlow()
 
     private val _liveWorkoutHeartRate = MutableStateFlow<Int?>(null)
     val liveWorkoutHeartRate: StateFlow<Int?> = _liveWorkoutHeartRate.asStateFlow()
@@ -837,15 +841,27 @@ class CmfBleManager(
                 }
             }
 
-            // WORKOUT_SUMMARY (0x0057 or 0x0160)
+            // WORKOUT_SUMMARY OR LIVE WORKOUT STATUS (0x0057 or 0x0160)
             cmd1 == 0x0057 || cmd1 == 0x0160 -> {
                 val workout = TelemetryDecoders.decodeWorkoutSummary(payload)
-                if (workout != null) {
-                    // Mark live workout as finished
+                if (workout != null && workout.durationMinutes > 0) {
+                    // Completed workout summary from watch
                     _isWorkoutActive.value = false
                     _liveWorkoutHeartRate.value = null
                     managerScope.launch { _workoutFlow.emit(workout) }
-                    Log.i(TAG, "Decoded Workout Summary: ${workout.type} (${workout.durationMinutes} mins)")
+                    Log.i(TAG, "Decoded Completed Workout Summary from watch: ${workout.type} (${workout.durationMinutes} mins)")
+                } else {
+                    // Live workout status update from watch (Sport started/paused/resumed/stopped on watch)
+                    val status = TelemetryDecoders.decodeLiveWorkoutStatus(payload)
+                    if (status != null) {
+                        val (isActive, sport) = status
+                        _isWorkoutActive.value = isActive
+                        _activeWorkoutType.value = sport.displayName
+                        if (!isActive) {
+                            _liveWorkoutHeartRate.value = null
+                        }
+                        Log.i(TAG, "Decoded Live Workout Status from watch: active=$isActive, sport=${sport.displayName}")
+                    }
                 }
             }
 
@@ -902,23 +918,58 @@ class CmfBleManager(
         sendFrame(0xFFFF, 0x8006, byteArrayOf(0x01), useEncryption = true)
     }
 
-    fun startWorkoutMode() {
+    fun startWorkoutMode(sport: CmfSport = CmfSport.OUTDOOR_RUN) {
         managerScope.launch {
-            Log.i(TAG, "Starting Live Workout Mode: enabling high-frequency stream and workout telemetry...")
+            Log.i(TAG, "Starting Live Workout Mode on watch for ${sport.displayName} (ID: ${sport.id})...")
             _isWorkoutActive.value = true
+            _activeWorkoutType.value = sport.displayName
+
+            // 1. Enable continuous real-time push streams (HR 0x0053, Activity 0x0056, SpO2 0x0055)
             enableRealtimeStream()
-            delay(300)
+            delay(200)
+
+            // 2. Prepare CMF Watch SPORT_START command (opcode 0x0057 0x8001)
+            // Payload: [action: 0x01, sportId: u8, startTimestamp: u32_le, targetType: u32_le, targetVal: u32_le]
+            val nowSec = Instant.now().epochSecond.toInt()
+            val sportStartPayload = ByteBuffer.allocate(14).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            sportStartPayload.put(0x01.toByte()) // Action 1 = START
+            sportStartPayload.put(sport.id.toByte()) // Sport ID (e.g. 17=Cricket, 3=Cycling, 1=Run)
+            sportStartPayload.putInt(nowSec)
+            sportStartPayload.putInt(0) // Open goal target
+            sportStartPayload.putInt(0)
+
+            Log.i(TAG, "Sending SPORT_START (0x0057 0x8001) to watch for ${sport.displayName}...")
+            sendFrame(0x0057, 0x8001, sportStartPayload.array(), useEncryption = true)
+            delay(200)
+
+            // 3. Send alternative control opcode 0x0160 0x8001
+            sendFrame(0x0160, 0x8001, byteArrayOf(0x01, sport.id.toByte()), useEncryption = true)
+            delay(200)
+
+            // 4. Send workout HR stream enable (0x00E0 0x8001)
             sendFrame(0x00E0, 0x8001, byteArrayOf(0x01), useEncryption = true)
         }
     }
 
-    fun stopWorkoutMode() {
+    fun stopWorkoutMode(sport: CmfSport = CmfSport.OUTDOOR_RUN) {
         managerScope.launch {
-            Log.i(TAG, "Stopping Live Workout Mode...")
+            Log.i(TAG, "Stopping Live Workout Mode on watch for ${sport.displayName}...")
             _isWorkoutActive.value = false
             _liveWorkoutHeartRate.value = null
+
+            val nowSec = Instant.now().epochSecond.toInt()
+            val sportStopPayload = ByteBuffer.allocate(6).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            sportStopPayload.put(0x00.toByte()) // Action 0 = STOP
+            sportStopPayload.put(sport.id.toByte())
+            sportStopPayload.putInt(nowSec)
+
+            // Send SPORT_STOP (0x0057 0x8001) to watch
+            sendFrame(0x0057, 0x8001, sportStopPayload.array(), useEncryption = true)
+            delay(200)
+            sendFrame(0x0160, 0x8001, byteArrayOf(0x00, sport.id.toByte()), useEncryption = true)
+            delay(200)
             sendFrame(0x00E0, 0x8001, byteArrayOf(0x00), useEncryption = true)
-            delay(300)
+            delay(500)
             triggerSync()
         }
     }

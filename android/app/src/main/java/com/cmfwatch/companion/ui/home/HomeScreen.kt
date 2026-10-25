@@ -155,6 +155,17 @@ fun HomeScreen(
                 DateGreetingRow(lastSyncedAt = summary.lastSyncedAt)
             }
 
+            if (summary.isWorkoutActive) {
+                item {
+                    ActiveWorkoutBanner(
+                        sportType = summary.activeWorkoutType,
+                        bpm = summary.liveWorkoutBpm ?: summary.latestHeartRate,
+                        durationSec = summary.liveWorkoutDurationSec,
+                        onClick = onActivityClick
+                    )
+                }
+            }
+
             item {
                 ActivityRingsCard(
                     completedPct = completedPct,
@@ -1309,4 +1320,86 @@ private fun deriveReadiness(sleepScore: Int?, hr: Int?, stress: Int?): Readiness
         else -> "Suggested: Recovery Stretch"
     }
     return Readiness(score, band, badge, blurb, suggestion)
+}
+
+@Composable
+private fun ActiveWorkoutBanner(
+    sportType: String,
+    bpm: Int?,
+    durationSec: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val hrs = durationSec / 3600
+    val mins = (durationSec % 3600) / 60
+    val secs = durationSec % 60
+    val timeFormatted = if (hrs > 0) "%02d:%02d:%02d".format(hrs, mins, secs) else "%02d:%02d".format(mins, secs)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(8.dp, RoundedCornerShape(24.dp), ambientColor = Color(0x33FF5722), spotColor = Color(0x33FF5722))
+            .clip(RoundedCornerShape(24.dp))
+            .background(CmfPrimaryContainer)
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CmfPulseDot(color = Color.White, size = 8.dp)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "WORKOUT IN PROGRESS",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    letterSpacing = 0.8.sp,
+                    color = Color.White.copy(alpha = 0.9f)
+                )
+            }
+            Text(
+                text = sportType,
+                fontFamily = HeadlineFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp,
+                color = Color.White
+            )
+            Text(
+                text = "Tap to view live session details",
+                fontFamily = InterFontFamily,
+                fontSize = 12.sp,
+                color = Color.White.copy(alpha = 0.8f)
+            )
+        }
+
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = bpm?.toString() ?: "--",
+                    fontFamily = HeadlineFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 28.sp,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    text = "BPM",
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+            Text(
+                text = timeFormatted,
+                fontFamily = HeadlineFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                color = Color.White
+            )
+        }
+    }
 }

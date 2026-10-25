@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -66,6 +68,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.cmfwatch.companion.domain.models.CmfSport
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.storage.SavedWorkout
 import com.cmfwatch.companion.storage.UserGoalStore
@@ -127,6 +130,7 @@ fun ActivityScreen(
     var goals by remember { mutableStateOf(goalStore.getGoals()) }
     var showGoalDialog by remember { mutableStateOf(false) }
     var showWorkoutInfoDialog by remember { mutableStateOf(false) }
+    var selectedSport by remember { mutableStateOf(CmfSport.CRICKET) }
     val scope = rememberCoroutineScope()
 
     val workouts = summary.workoutsToday
@@ -328,7 +332,7 @@ fun ActivityScreen(
             onDismissRequest = { showWorkoutInfoDialog = false },
             title = {
                 Text(
-                    text = "Track Workout with CMF Watch",
+                    text = "Start Workout on CMF Watch",
                     fontFamily = HeadlineFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
@@ -336,18 +340,45 @@ fun ActivityScreen(
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "Real-time Live Workout Streaming:",
+                        text = "Select Sport Activity:",
                         fontFamily = InterFontFamily,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp,
                         color = CmfOnSurface
                     )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CmfSport.popularSports.forEach { sport ->
+                            val isSelected = (sport == selectedSport)
+                            Box(
+                                modifier = Modifier
+                                    .clip(PillShape)
+                                    .background(if (isSelected) CmfPrimaryContainer else CmfSurfaceContainer)
+                                    .clickable { selectedSport = sport }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = sport.displayName,
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 12.sp,
+                                    color = if (isSelected) CmfOnPrimary else CmfOnSurface
+                                )
+                            }
+                        }
+                    }
+
                     Text(
-                        text = "1. You can start any activity on your CMF Watch (Sports menu -> Start). The app will automatically receive your live heart rate, HR zones, and calories.\n\n2. Or tap 'Start Live Companion Workout' below to begin streaming biometrics immediately.\n\n3. Tap 'Sync Watch Now' to force-pull all activity logs from the watch.",
+                        text = "Starting the workout triggers workout mode directly on your CMF Watch and streams live heart rate, HR zones, and calories.\n\nTip: You can also start Cricket, Cycling, or any sport directly from your watch's Sports menu!",
                         fontFamily = InterFontFamily,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         color = CmfOnSurfaceVariant
                     )
                 }
@@ -356,9 +387,9 @@ fun ActivityScreen(
                 Button(
                     onClick = {
                         showWorkoutInfoDialog = false
-                        onStartWorkout("Outdoor Run")
+                        onStartWorkout(selectedSport.displayName)
                     }
-                ) { Text("Start Live Workout") }
+                ) { Text("Start ${selectedSport.displayName} on Watch") }
             },
             dismissButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -368,7 +399,7 @@ fun ActivityScreen(
                             onSyncNow()
                         }
                     ) { Text("Sync Watch Now") }
-                    TextButton(onClick = { showWorkoutInfoDialog = false }) { Text("Close") }
+                    TextButton(onClick = { showWorkoutInfoDialog = false }) { Text("Cancel") }
                 }
             }
         )

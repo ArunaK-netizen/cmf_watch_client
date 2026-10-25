@@ -134,4 +134,27 @@ class BleUnitTest {
         assertEquals(180.0f, intervals[1].distanceMeters, 0.01f)
         assertEquals(90.0f, intervals[1].caloriesKcal, 0.01f)
     }
+
+    @Test
+    fun testLiveWorkoutStatusDecoderCricketAndCycling() {
+        // Watch sends [action=1 (START), sportId=17 (Cricket)]
+        val cricketStartPayload = byteArrayOf(0x01.toByte(), 17.toByte())
+        val cricketStatus = TelemetryDecoders.decodeLiveWorkoutStatus(cricketStartPayload)
+        assertNotNull(cricketStatus)
+        assertTrue(cricketStatus!!.first) // isActive == true
+        assertEquals("Cricket", cricketStatus.second.displayName)
+
+        // Watch sends [action=1 (START), sportId=3 (Cycling)]
+        val cycleStartPayload = byteArrayOf(0x01.toByte(), 3.toByte())
+        val cycleStatus = TelemetryDecoders.decodeLiveWorkoutStatus(cycleStartPayload)
+        assertNotNull(cycleStatus)
+        assertTrue(cycleStatus!!.first) // isActive == true
+        assertEquals("Cycling", cycleStatus.second.displayName)
+
+        // Watch sends [action=0 (STOP), sportId=17]
+        val stopPayload = byteArrayOf(0x00.toByte(), 17.toByte())
+        val stopStatus = TelemetryDecoders.decodeLiveWorkoutStatus(stopPayload)
+        assertNotNull(stopStatus)
+        assertFalse(stopStatus!!.first) // isActive == false
+    }
 }

@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.cmfwatch.companion.ble.CmfBleManager
 import com.cmfwatch.companion.ble.CmfBleService
+import com.cmfwatch.companion.domain.models.CmfSport
 import com.cmfwatch.companion.domain.models.DashboardSummary
 import com.cmfwatch.companion.domain.models.DeviceConnectionState
 import com.cmfwatch.companion.storage.HealthSnapshotStore
@@ -180,6 +181,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         liveWorkoutBpm = null
                     )
                 }
+            }
+        }
+
+        viewModelScope.launch {
+            bleManager.activeWorkoutType.collect { type ->
+                _uiState.value = _uiState.value.copy(activeWorkoutType = type)
             }
         }
 
@@ -365,17 +372,23 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun startWorkout(type: String = "Outdoor Run") {
+    fun startWorkout(sport: CmfSport) {
         _uiState.value = _uiState.value.copy(
-            activeWorkoutType = type,
+            activeWorkoutType = sport.displayName,
             isWorkoutActive = true,
             liveWorkoutDurationSec = 0
         )
-        bleManager.startWorkoutMode()
+        bleManager.startWorkoutMode(sport)
+    }
+
+    fun startWorkout(type: String = "Outdoor Run") {
+        val sport = CmfSport.fromName(type)
+        startWorkout(sport)
     }
 
     fun stopWorkout() {
-        bleManager.stopWorkoutMode()
+        val sport = CmfSport.fromName(_uiState.value.activeWorkoutType)
+        bleManager.stopWorkoutMode(sport)
         _uiState.value = _uiState.value.copy(
             isWorkoutActive = false,
             liveWorkoutDurationSec = 0,

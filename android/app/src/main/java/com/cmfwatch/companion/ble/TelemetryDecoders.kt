@@ -1,5 +1,6 @@
 package com.cmfwatch.companion.ble
 
+import com.cmfwatch.companion.domain.models.CmfSport
 import com.cmfwatch.companion.domain.models.HeartRateSample
 import com.cmfwatch.companion.domain.models.SleepEpoch
 import com.cmfwatch.companion.domain.models.SleepSession
@@ -342,16 +343,7 @@ object TelemetryDecoders {
             val maxHr = buffer.int and 0xFF
             val avgPaceSec = if (buffer.remaining() >= 4) buffer.int else 0
             val typeId = if (buffer.remaining() >= 4) buffer.int else 1
-
-            val typeName = when (typeId) {
-                1 -> "Outdoor Run"
-                2 -> "Outdoor Walk"
-                3 -> "Outdoor Cycle"
-                4 -> "Indoor Run"
-                5 -> "HIIT"
-                6 -> "Yoga"
-                else -> "Freestyle Workout"
-            }
+            val typeName = CmfSport.fromId(typeId).displayName
 
             val startTime = Instant.ofEpochSecond(startSec)
             val durationMins = (durationSec / 60).toInt().coerceAtLeast(1)
@@ -372,5 +364,62 @@ object TelemetryDecoders {
             e.printStackTrace()
             return null
         }
+    }
+
+    /**
+     * Decode live workout status packet from watch (opcode 0x0057 or 0x0160).
+     * Returns Pair(isActive: Boolean, sport: CmfSport)?
+     */
+    fun decodeLiveWorkoutStatus(payload: ByteArray): Pair<Boolean, CmfSport>? {
+        if (payload.isEmpty()) return null
+
+        // Check if it's a summary packet where durationSec == 0 (initialization) or > 0 (completion)
+        if (payload.size >= 28) {
+            try {
+                val buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
+                buffer.int // startSec
+                val durationSec = buffer.int.toLong() and 0xFFFFFFFFL
+                buffer.int // dist
+                buffer.int // kcal
+                buffer.int // hr
+                buffer.int // max_hr
+                buffer.int // pace
+                val typeId = if (buffer.remaining() >= 4) buffer.int else 1
+                val sport = CmfSport.fromId(typeId)
+                return if (durationSec == 0L) Pair(true, sport) else Pair(false, sport)
+            } catch (_: Exception) {
+                // fall through to short packet heuristic
+            }
+        }
+
+        // Short status packets (1 to 8 bytes)
+        // Format A: [state: u8, sportId: u8, ...] (1=start, 2=pause, 3=resume, 0/4=stop)
+        // Format B: [sportId: u8, state: u8, ...]
+        if (payload.size >= 2) {
+            val b0 = payload[0].toInt() and 0xFF
+            val b1 = payload[1].toInt() and 0xFF
+
+            if (b0 in listOf(0, 1, 2, 3, 4) && b1 in 1..35) {
+                val isActive = b0 in listOf(1, 2, 3)
+                return Pair(isActive, CmfSport.fromId(b1))
+            }
+
+            if (b1 in listOf(0, 1, 2, 3, 4) && b0 in 1..35) {
+                val isActive = b1 in listOf(1, 2, 3)
+                return Pair(isActive, CmfSport.fromId(b0))
+            }
+        }
+
+        if (payload.size == 1) {
+            val b = payload[0].toInt() and 0xFF
+            return when (b) {
+                0, 4 -> Pair(false, CmfSport.FREE_TRAINING)
+                1 -> Pair(true, CmfSport.FREE_TRAINING)
+                in 2..35 -> Pair(true, CmfSport.fromId(b))
+                else -> null
+            }
+        }
+
+        return null
     }
 }
